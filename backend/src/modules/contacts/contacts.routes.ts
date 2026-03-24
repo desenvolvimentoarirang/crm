@@ -1,0 +1,109 @@
+import { FastifyInstance } from 'fastify'
+import { z } from 'zod'
+import { prisma } from '../../config/database'
+import { authenticate } from '../../middleware/authenticate'
+import { notFound } from '../../utils/errors'
+import { getPaginationParams, buildPaginatedResult } from '../../utils/pagination'
+
+export async function contactsRoutes(app: FastifyInstance) {
+  const auth = { preHandler: [authenticate] }
+
+  app.get('/', auth, async (req) => {
+    const query = req.query as any
+    const { page, limit, skip } = getPaginationParams(query)
+    const search = query.search as string | undefined
+
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { phone: { contains: search } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}
+
+    const [contacts, total] = await prisma.$transaction([
+      prisma.contact.findMany({
+        where,
+        skip,
+        take: limit,
+        include: { tags: { include: { tag: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.contact.count({ where }),
+    ])
+
+    return buildPaginatedResult(contacts, total, page, limit)
+  })
+
+  app.get('/:id', auth, async (req) => {
+    const { id } = req.params as { id: string }
+    const contact = await prisma.contact.findUnique({
+      where: { id },
+      include: {
+        tags: { include: { tag: true } },
+        conversations: {
+          take: 10,
+          orderBy: { lastMessageAt: 'desc' },
+          include: { assignedTo: { select: { id: true, name: true } } },
+        },
+      },
+    })
+    if (!contact) throw notFound('Contact')
+    return contact
+  })
+
+  app.post('/', auth, async (req, reply) => {
+    const body = z
+      .object({
+        phone: z.string().min(1),
+        name: z.string().optional(),
+        email: z.string().email().optional(),
+        notes: z.string().optional(),
+      })
+      .parse(req.body)
+
+    const contact = await prisma.contact.upsert({
+      where: { phone: body.phone },
+      update: body,
+      create: body,
+    })
+    return reply.status(201).send(contact)
+  })
+
+  app.patch('/:id', auth, async (req) => {
+    const { id } = req.params as { id: string }
+    const body = z
+      .object({
+        name: z.string().optional(),
+        email: z.string().email().optional(),
+        notes: z.string().optional(),
+        tagIds: z.array(z.string()).optional(),
+      })
+      .parse(req.body)
+
+    const { tagIds, ...data } = body
+
+    const contact = await prisma.contact.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(tagIds !== undefined && {
+          tags: {
+            deleteMany: {},
+            create: tagIds.map((tagId) => ({ tagId })),
+          },
+        }),
+      },
+      include: { tags: { include: { tag: true } } },
+    })
+    return contact
+  })
+
+  app.delete('/:id', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    await prisma.contact.delete({ where: { id } })
+    return reply.status(204).send()
+  })
+}

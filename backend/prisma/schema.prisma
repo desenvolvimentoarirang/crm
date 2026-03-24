@@ -1,0 +1,184 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  WORKER
+}
+
+enum ConversationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACT
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(WORKER)
+  isActive  Boolean  @default(true)
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations Conversation[] @relation("AssignedWorker")
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  phone       String   @unique
+  name        String?
+  pushName    String?
+  email       String?
+  profilePic  String?
+  notes       String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  conversations Conversation[]
+  tags          ContactTag[]
+
+  @@index([phone])
+  @@map("contacts")
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  color     String       @default("#3B82F6")
+  createdAt DateTime     @default(now())
+
+  contacts ContactTag[]
+
+  @@map("tags")
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+model WhatsAppInstance {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  displayName  String?
+  phone        String?
+  status       String   @default("disconnected")
+  qrCode       String?
+  webhookUrl   String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  conversations Conversation[]
+
+  @@map("whatsapp_instances")
+}
+
+model Conversation {
+  id           String             @id @default(cuid())
+  contactId    String
+  contact      Contact            @relation(fields: [contactId], references: [id])
+  instanceId   String?
+  instance     WhatsAppInstance?  @relation(fields: [instanceId], references: [id])
+  assignedToId String?
+  assignedTo   User?              @relation("AssignedWorker", fields: [assignedToId], references: [id])
+  status       ConversationStatus @default(OPEN)
+  unreadCount  Int                @default(0)
+  lastMessageAt DateTime?
+  metadata     Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  messages Message[]
+
+  @@unique([contactId, instanceId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  evolutionId    String?          @unique
+  direction      MessageDirection @default(INBOUND)
+  type           MessageType      @default(TEXT)
+  body           String?
+  mediaUrl       String?
+  mimeType       String?
+  fileName       String?
+  duration       Int?
+  latitude       Float?
+  longitude      Float?
+  status         MessageStatus    @default(SENT)
+  timestamp      DateTime         @default(now())
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId, timestamp])
+  @@index([evolutionId])
+  @@map("messages")
+}
