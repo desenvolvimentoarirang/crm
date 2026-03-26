@@ -1,5 +1,8 @@
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
 [phases.build]
-cmds = ["npm ci", "npx prisma generate"]
+cmds = ["npx prisma generate"]
 
 [start]
-cmd = "npx tsx src/app.ts"
+cmd = "npx tsx prisma/seed.ts && npx tsx src/app.ts"
