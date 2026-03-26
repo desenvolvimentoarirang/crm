@@ -1,5 +1,5 @@
 [phases.build]
-cmds = ["npx prisma generate", "npm run build"]
+cmds = ["npm ci", "npx prisma generate"]
 
 [start]
-cmd = "npx prisma db push --skip-generate && node dist/app.js"
+cmd = "npx tsx src/app.ts"

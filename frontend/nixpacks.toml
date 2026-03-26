@@ -1,5 +1,5 @@
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["npm ci", "npm run build"]
 
 [start]
-cmd = "npx serve -s dist -l tcp://0.0.0.0:$PORT"
+cmd = "node server.cjs"

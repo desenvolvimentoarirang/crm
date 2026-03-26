@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "start": "serve -s dist -l tcp://0.0.0.0:${PORT:-80}",
+    "build": "vite build",
+    "start": "node server.cjs",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx"
   },
@@ -25,8 +25,7 @@
     "lucide-react": "^0.395.0",
     "react-virtuoso": "^4.7.11",
     "recharts": "^2.12.7",
-    "react-hot-toast": "^2.4.1",
-    "serve": "^14.2.4"
+    "react-hot-toast": "^2.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
