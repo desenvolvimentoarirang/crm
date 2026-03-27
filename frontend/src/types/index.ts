@@ -1,5 +1,7 @@
-export type Role = 'ADMIN' | 'WORKER'
+export type Role = 'SUPER_ADMIN' | 'CLIENT_ADMIN' | 'WORKER' | 'WORKER_TRUST'
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED'
+export type ConversationCategory = 'INQUIRY' | 'BOOKING' | 'SUPPORT' | 'COMPLAINT' | 'GENERAL'
+export type Priority = 'LOW' | 'NORMAL' | 'HIGH' | 'VIP'
 export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'STICKER'
 export type MessageStatus = 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
 export type MessageDirection = 'INBOUND' | 'OUTBOUND'
@@ -10,6 +12,7 @@ export interface User {
   name: string
   role: Role
   isActive: boolean
+  clientAdminId?: string | null
   createdAt: string
 }
 
@@ -27,6 +30,7 @@ export interface Contact {
   email?: string
   profilePic?: string
   notes?: string
+  isVip?: boolean
   createdAt: string
   tags: { tag: Tag }[]
 }
@@ -39,6 +43,7 @@ export interface WhatsAppInstance {
   status: string
   liveStatus?: string
   isActive: boolean
+  clientAdminId?: string | null
 }
 
 export interface Message {
@@ -64,9 +69,14 @@ export interface Conversation {
   instance?: WhatsAppInstance
   assignedToId?: string
   assignedTo?: Pick<User, 'id' | 'name' | 'email'>
+  clientAdminId?: string | null
   status: ConversationStatus
+  category?: ConversationCategory
+  priority?: Priority
   unreadCount: number
   lastMessageAt?: string
+  slaDeadline?: string
+  firstResponseAt?: string
   messages?: Message[]
   createdAt: string
   updatedAt: string
@@ -89,4 +99,5 @@ export interface AuthUser {
   email: string
   name: string
   role: Role
+  clientAdminId?: string | null
 }

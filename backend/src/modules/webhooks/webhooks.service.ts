@@ -3,6 +3,8 @@ import { prisma } from '../../config/database'
 import { evolutionApi } from '../../services/evolution-api.service'
 import { logger } from '../../utils/logger'
 import { redis } from '../../config/redis'
+import { categorizeMessage } from '../../services/categorization.service'
+import { calculateSlaDeadline, getPriorityFromVip } from '../../services/sla.service'
 
 interface EvolutionWebhookPayload {
   event: string
@@ -78,7 +80,15 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
       create: { name: instanceName, displayName: instanceName },
     })
 
-    // Upsert conversation
+    // Extract message content early for categorization
+    const msgContent = extractMessageContent(msg)
+
+    // Determine priority and category for new conversations
+    const priority = getPriorityFromVip(contact.isVip)
+    const category = categorizeMessage(msgContent.body ?? '')
+    const slaDeadline = calculateSlaDeadline(priority)
+
+    // Upsert conversation (inherit clientAdminId from instance)
     const conversation = await prisma.conversation.upsert({
       where: { contactId_instanceId: { contactId: contact.id, instanceId: instance.id } },
       update: {
@@ -89,7 +99,11 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
       create: {
         contactId: contact.id,
         instanceId: instance.id,
+        clientAdminId: instance.clientAdminId,
         status: 'OPEN',
+        category,
+        priority,
+        slaDeadline,
         lastMessageAt: new Date(),
         unreadCount: fromMe ? 0 : 1,
       },
@@ -99,9 +113,6 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
         instance: { select: { id: true, name: true } },
       },
     })
-
-    // Extract message content
-    const msgContent = extractMessageContent(msg)
 
     // Upsert message (avoid duplicates from Evolution retries)
     const message = await prisma.message.upsert({
@@ -121,9 +132,15 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
       },
     })
 
-    // Broadcast via Socket.io
+    // Broadcast via Socket.io — scoped
     app.io.to(`conversation:${conversation.id}`).emit('message:new', message)
-    app.io.emit('conversation:updated', conversation)
+    if (conversation.clientAdminId) {
+      app.io.to(`scope:${conversation.clientAdminId}`).emit('conversation:updated', conversation)
+      app.io.to(`scope:${conversation.clientAdminId}`).emit('conversations:refresh')
+    } else {
+      app.io.emit('conversation:updated', conversation)
+      app.io.emit('conversations:refresh')
+    }
 
     logger.info({ conversationId: conversation.id, phone, fromMe }, 'Message processed')
   }

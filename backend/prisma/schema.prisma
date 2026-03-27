@@ -11,8 +11,10 @@ datasource db {
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum Role {
-  ADMIN
+  SUPER_ADMIN
+  CLIENT_ADMIN
   WORKER
+  WORKER_TRUST
 }
 
 enum ConversationStatus {
@@ -20,6 +22,21 @@ enum ConversationStatus {
   IN_PROGRESS
   RESOLVED
   CLOSED
+}
+
+enum ConversationCategory {
+  INQUIRY
+  BOOKING
+  SUPPORT
+  COMPLAINT
+  GENERAL
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  VIP
 }
 
 enum MessageType {
@@ -49,19 +66,26 @@ enum MessageDirection {
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(WORKER)
-  isActive  Boolean  @default(true)
-  avatarUrl String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  email          String   @unique
+  password       String
+  name           String
+  role           Role     @default(WORKER)
+  isActive       Boolean  @default(true)
+  avatarUrl      String?
+  clientAdminId  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  conversations Conversation[] @relation("AssignedWorker")
-  refreshTokens RefreshToken[]
+  clientAdmin   User?  @relation("TeamMembers", fields: [clientAdminId], references: [id])
+  teamMembers   User[] @relation("TeamMembers")
 
+  conversations  Conversation[] @relation("AssignedWorker")
+  refreshTokens  RefreshToken[]
+  ownedInstances WhatsAppInstance[] @relation("InstanceOwner")
+  ownedConversations Conversation[] @relation("ConversationOwner")
+
+  @@index([clientAdminId])
   @@map("users")
 }
 
@@ -85,6 +109,7 @@ model Contact {
   email       String?
   profilePic  String?
   notes       String?
+  isVip       Boolean  @default(false)
   metadata    Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -119,36 +144,45 @@ model ContactTag {
 }
 
 model WhatsAppInstance {
-  id           String   @id @default(cuid())
-  name         String   @unique
-  displayName  String?
-  phone        String?
-  status       String   @default("disconnected")
-  qrCode       String?
-  webhookUrl   String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String   @unique
+  displayName   String?
+  phone         String?
+  status        String   @default("disconnected")
+  qrCode        String?
+  webhookUrl    String?
+  isActive      Boolean  @default(true)
+  clientAdminId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
+  clientAdmin   User? @relation("InstanceOwner", fields: [clientAdminId], references: [id])
   conversations Conversation[]
 
+  @@index([clientAdminId])
   @@map("whatsapp_instances")
 }
 
 model Conversation {
-  id           String             @id @default(cuid())
-  contactId    String
-  contact      Contact            @relation(fields: [contactId], references: [id])
-  instanceId   String?
-  instance     WhatsAppInstance?  @relation(fields: [instanceId], references: [id])
-  assignedToId String?
-  assignedTo   User?              @relation("AssignedWorker", fields: [assignedToId], references: [id])
-  status       ConversationStatus @default(OPEN)
-  unreadCount  Int                @default(0)
-  lastMessageAt DateTime?
-  metadata     Json?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id              String               @id @default(cuid())
+  contactId       String
+  contact         Contact              @relation(fields: [contactId], references: [id])
+  instanceId      String?
+  instance        WhatsAppInstance?    @relation(fields: [instanceId], references: [id])
+  assignedToId    String?
+  assignedTo      User?                @relation("AssignedWorker", fields: [assignedToId], references: [id])
+  clientAdminId   String?
+  clientAdmin     User?                @relation("ConversationOwner", fields: [clientAdminId], references: [id])
+  status          ConversationStatus   @default(OPEN)
+  category        ConversationCategory @default(GENERAL)
+  priority        Priority             @default(NORMAL)
+  unreadCount     Int                  @default(0)
+  lastMessageAt   DateTime?
+  slaDeadline     DateTime?
+  firstResponseAt DateTime?
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   messages Message[]
 
@@ -156,6 +190,7 @@ model Conversation {
   @@index([status])
   @@index([assignedToId])
   @@index([lastMessageAt])
+  @@index([clientAdminId])
   @@map("conversations")
 }
 

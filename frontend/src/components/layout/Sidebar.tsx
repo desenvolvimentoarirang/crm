@@ -7,9 +7,14 @@ import {
   LogOut,
   User,
   BookUser,
+  Building2,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/auth.store'
+import { useThemeStore } from '../../store/theme.store'
 import { authService } from '../../services/auth.service'
+import { isAdminRole, isSuperAdmin, getRoleLabel } from '../../utils/roles'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
 
@@ -24,10 +29,15 @@ const ADMIN_NAV_ITEMS = [
   { to: '/instances', label: 'WhatsApp', icon: Smartphone },
 ]
 
+const SUPER_ADMIN_NAV_ITEMS = [
+  { to: '/admin/clients', label: 'Client Admins', icon: Building2 },
+]
+
 export default function Sidebar() {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const { theme, toggleTheme } = useThemeStore()
 
   const handleLogout = async () => {
     try {
@@ -39,57 +49,60 @@ export default function Sidebar() {
     }
   }
 
+  const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
+    clsx(
+      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group',
+      isActive
+        ? 'bg-wa-accent text-white'
+        : 'text-gray-400 hover:bg-gray-800 dark:hover:bg-wa-bg-hover hover:text-white',
+    )
+
   return (
-    <aside className="w-16 xl:w-56 bg-gray-900 flex flex-col h-full flex-shrink-0">
+    <aside className="w-16 xl:w-56 bg-gray-900 dark:bg-wa-bg-deep flex flex-col h-full flex-shrink-0">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-800">
-        <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-800 dark:border-wa-border">
+        <div className="w-8 h-8 bg-wa-accent rounded-lg flex items-center justify-center flex-shrink-0">
           <MessageSquare size={16} className="text-white" />
         </div>
         <span className="hidden xl:block font-bold text-white text-sm">CRM Chat</span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 space-y-1 px-2">
+      <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
         {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group',
-                isActive
-                  ? 'bg-green-600 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white',
-              )
-            }
-          >
+          <NavLink key={to} to={to} className={navLinkClasses}>
             <Icon size={18} className="flex-shrink-0" />
             <span className="hidden xl:block text-sm font-medium">{label}</span>
           </NavLink>
         ))}
 
-        {user?.role === 'ADMIN' && (
+        {user && isAdminRole(user.role) && (
           <>
             <div className="px-3 pt-4 pb-1">
-              <span className="hidden xl:block text-xs font-medium text-gray-600 uppercase tracking-wider">
+              <span className="hidden xl:block text-xs font-medium text-gray-600 dark:text-wa-text-secondary uppercase tracking-wider">
                 Admin
               </span>
-              <div className="xl:hidden h-px bg-gray-800 mx-auto w-6" />
+              <div className="xl:hidden h-px bg-gray-800 dark:bg-wa-border mx-auto w-6" />
             </div>
             {ADMIN_NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  clsx(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
-                    isActive
-                      ? 'bg-green-600 text-white'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white',
-                  )
-                }
-              >
+              <NavLink key={to} to={to} className={navLinkClasses}>
+                <Icon size={18} className="flex-shrink-0" />
+                <span className="hidden xl:block text-sm font-medium">{label}</span>
+              </NavLink>
+            ))}
+          </>
+        )}
+
+        {user && isSuperAdmin(user.role) && (
+          <>
+            <div className="px-3 pt-4 pb-1">
+              <span className="hidden xl:block text-xs font-medium text-gray-600 dark:text-wa-text-secondary uppercase tracking-wider">
+                Platform
+              </span>
+              <div className="xl:hidden h-px bg-gray-800 dark:bg-wa-border mx-auto w-6" />
+            </div>
+            {SUPER_ADMIN_NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to} className={navLinkClasses}>
                 <Icon size={18} className="flex-shrink-0" />
                 <span className="hidden xl:block text-sm font-medium">{label}</span>
               </NavLink>
@@ -98,20 +111,29 @@ export default function Sidebar() {
         )}
       </nav>
 
-      {/* User info + Logout */}
-      <div className="border-t border-gray-800 p-3">
-        <div className="flex items-center gap-3 mb-2 px-1">
-          <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
-            <User size={14} className="text-gray-300" />
+      {/* Theme toggle + User info + Logout */}
+      <div className="border-t border-gray-800 dark:border-wa-border p-3 space-y-2">
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-800 dark:hover:bg-wa-bg-hover hover:text-white w-full transition-colors"
+        >
+          {theme === 'dark' ? <Sun size={16} className="flex-shrink-0" /> : <Moon size={16} className="flex-shrink-0" />}
+          <span className="hidden xl:block text-sm">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+        </button>
+
+        <div className="flex items-center gap-3 px-1">
+          <div className="w-8 h-8 rounded-full bg-gray-700 dark:bg-wa-bg-hover flex items-center justify-center flex-shrink-0">
+            <User size={14} className="text-gray-300 dark:text-wa-text-secondary" />
           </div>
           <div className="hidden xl:block min-w-0">
             <p className="text-sm font-medium text-white truncate">{user?.name}</p>
-            <p className="text-xs text-gray-500 truncate">{user?.role}</p>
+            <p className="text-xs text-gray-500 dark:text-wa-text-secondary truncate">{user ? getRoleLabel(user.role) : ''}</p>
           </div>
         </div>
+
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-800 dark:hover:bg-wa-bg-hover hover:text-white w-full transition-colors"
         >
           <LogOut size={16} className="flex-shrink-0" />
           <span className="hidden xl:block text-sm">Logout</span>

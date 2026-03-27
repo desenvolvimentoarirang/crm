@@ -7,12 +7,21 @@ import { logger } from '../../utils/logger'
 
 export async function instancesRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate] }
-  const adminOnly = { preHandler: [authenticate, requireRole('ADMIN')] }
+  const adminOnly = { preHandler: [authenticate, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN')] }
 
   // ─── List instances ───────────────────────────────────────────────────────
-  app.get('/', auth, async () => {
+  app.get('/', auth, async (req) => {
+    const where: any = { isActive: true }
+
+    if (req.user.role === 'CLIENT_ADMIN') {
+      where.clientAdminId = req.user.id
+    } else if (req.user.role === 'WORKER' || req.user.role === 'WORKER_TRUST') {
+      where.clientAdminId = req.scope
+    }
+    // SUPER_ADMIN sees all
+
     const instances = await prisma.whatsAppInstance.findMany({
-      where: { isActive: true },
+      where,
       orderBy: { createdAt: 'desc' },
     })
 
@@ -30,20 +39,24 @@ export async function instancesRoutes(app: FastifyInstance) {
       properties: {
         name: { type: 'string', minLength: 1 },
         displayName: { type: 'string' },
+        clientAdminId: { type: 'string' },
       },
     },
   } }, async (req, reply) => {
-    const { name, displayName } = z
-      .object({ name: z.string().min(1), displayName: z.string().optional() })
+    const { name, displayName, clientAdminId } = z
+      .object({ name: z.string().min(1), displayName: z.string().optional(), clientAdminId: z.string().optional() })
       .parse(req.body)
+
+    // CLIENT_ADMIN always owns their instances
+    const ownerId = req.user.role === 'CLIENT_ADMIN' ? req.user.id : (clientAdminId ?? null)
 
     const instance = await prisma.whatsAppInstance.upsert({
       where: { name },
-      update: { displayName },
-      create: { name, displayName },
+      update: { displayName, clientAdminId: ownerId },
+      create: { name, displayName, clientAdminId: ownerId },
     })
 
-    // Start Baileys session in background (QR code arrives via socket event)
+    // Start Baileys session in background
     baileysManager.createSession(name).catch((err) => {
       logger.error({ name, err: err.message }, 'Failed to start Baileys session')
     })
@@ -60,11 +73,9 @@ export async function instancesRoutes(app: FastifyInstance) {
       return reply.send({ qrCode: qr, cached: true })
     }
 
-    // If no QR and no session, try starting one
     const status = baileysManager.getStatus(name)
     if (status === 'disconnected') {
       await baileysManager.createSession(name)
-      // Wait a moment for QR to generate
       await new Promise((r) => setTimeout(r, 2000))
       const newQr = await baileysManager.getQR(name)
       if (newQr) {
@@ -94,6 +105,11 @@ export async function instancesRoutes(app: FastifyInstance) {
     const { name } = req.params as { name: string }
     const instance = await prisma.whatsAppInstance.findUnique({ where: { name } })
     if (!instance) return reply.status(404).send({ error: 'Instance not found' })
+
+    // Scope check
+    if (req.user.role === 'CLIENT_ADMIN' && instance.clientAdminId !== req.user.id) {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Not your instance' })
+    }
 
     await baileysManager.deleteSession(name)
     await prisma.whatsAppInstance.update({ where: { name }, data: { isActive: false } })

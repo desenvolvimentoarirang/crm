@@ -3,6 +3,7 @@ import { MessageSquare, Users, CheckCircle, Clock, TrendingUp } from 'lucide-rea
 import { conversationsService } from '../services/conversations.service'
 import { useAuthStore } from '../store/auth.store'
 import { useNavigate } from 'react-router-dom'
+import { isAdminRole } from '../utils/roles'
 
 function StatCard({ title, value, icon: Icon, color, onClick }: {
   title: string
@@ -18,8 +19,8 @@ function StatCard({ title, value, icon: Icon, color, onClick }: {
     >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{value.toLocaleString()}</p>
+          <p className="text-sm font-medium text-gray-500 dark:text-wa-text-secondary">{title}</p>
+          <p className="text-3xl font-bold text-gray-900 dark:text-wa-text-primary mt-1">{value.toLocaleString()}</p>
         </div>
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
           <Icon size={24} className="text-white" />
@@ -37,24 +38,26 @@ export default function DashboardPage() {
     queryKey: ['conversation-stats'],
     queryFn: conversationsService.stats,
     refetchInterval: 60000,
-    enabled: user?.role === 'ADMIN',
   })
+
+  const showStats = true
+  const showWorkerCTA = user?.role === 'WORKER' || user?.role === 'WORKER_TRUST'
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Welcome back, {user?.name}</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-wa-text-primary">Dashboard</h1>
+        <p className="text-gray-500 dark:text-wa-text-secondary mt-1">Welcome back, {user?.name}</p>
       </div>
 
-      {user?.role === 'ADMIN' && (
+      {showStats && (
         <>
           {isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="card p-6 animate-pulse">
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-3" />
-                  <div className="h-8 bg-gray-200 rounded w-1/3" />
+                  <div className="h-4 bg-gray-200 dark:bg-wa-bg-hover rounded w-1/2 mb-3" />
+                  <div className="h-8 bg-gray-200 dark:bg-wa-bg-hover rounded w-1/3" />
                 </div>
               ))}
             </div>
@@ -92,11 +95,11 @@ export default function DashboardPage() {
         </>
       )}
 
-      {user?.role === 'WORKER' && (
-        <div className="card p-8 text-center">
-          <MessageSquare size={48} className="text-green-600 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900">Ready to help customers?</h2>
-          <p className="text-gray-500 mt-2 mb-6">Go to conversations to start chatting</p>
+      {showWorkerCTA && (
+        <div className="card p-8 text-center mt-6">
+          <MessageSquare size={48} className="text-green-600 dark:text-wa-accent mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-wa-text-primary">Ready to help customers?</h2>
+          <p className="text-gray-500 dark:text-wa-text-secondary mt-2 mb-6">Go to conversations to start chatting</p>
           <button className="btn-primary" onClick={() => navigate('/conversations')}>
             View Conversations
           </button>

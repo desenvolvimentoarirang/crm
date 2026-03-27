@@ -60,12 +60,12 @@ export default function ChatWindow({ conversation }: { conversation: Conversatio
     <div className="flex flex-col h-full">
       <ConversationHeader conversation={conversation} />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-1 bg-gray-50">
+      <div className="flex-1 overflow-y-auto p-4 space-y-1 bg-gray-50 dark:bg-wa-bg-default">
         {isLoading ? (
           <div className="flex flex-col gap-2">
             {[...Array(6)].map((_, i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
-                <div className="h-10 bg-gray-200 rounded-2xl animate-pulse w-48" />
+                <div className="h-10 bg-gray-200 dark:bg-wa-bg-hover rounded-2xl animate-pulse w-48" />
               </div>
             ))}
           </div>

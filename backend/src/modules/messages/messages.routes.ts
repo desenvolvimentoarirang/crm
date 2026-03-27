@@ -56,7 +56,7 @@ export async function messagesRoutes(app: FastifyInstance) {
         conv.contact.phone,
         body.text ?? '',
       )
-      evolutionId = response?.key?.id
+      evolutionId = response?.key?.id ?? undefined
     } catch (err) {
       console.error('Baileys send failed:', err)
     }

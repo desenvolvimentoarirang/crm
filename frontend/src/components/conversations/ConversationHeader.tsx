@@ -14,33 +14,33 @@ export default function ConversationHeader({ conversation }: { conversation: Con
   const name = contact.name ?? contact.pushName ?? contact.phone
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white">
-      <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-wa-border bg-white dark:bg-wa-bg-panel">
+      <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-wa-bg-hover flex items-center justify-center overflow-hidden flex-shrink-0">
         {contact.profilePic ? (
           <img src={contact.profilePic} className="w-full h-full object-cover" alt="" />
         ) : (
-          <User size={16} className="text-gray-500" />
+          <User size={16} className="text-gray-500 dark:text-wa-text-secondary" />
         )}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-900 text-sm truncate">{name}</span>
+          <span className="font-semibold text-gray-900 dark:text-wa-text-primary text-sm truncate">{name}</span>
           <span className={clsx('px-2 py-0.5 rounded-full text-xs font-medium', STATUS_BADGE[conversation.status])}>
             {conversation.status.replace('_', ' ')}
           </span>
         </div>
-        <div className="flex items-center gap-1 text-xs text-gray-500">
+        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-wa-text-secondary">
           <Phone size={10} />
           <span>{contact.phone}</span>
           {conversation.instance && (
-            <span className="text-gray-400 ml-2">via {conversation.instance.displayName ?? conversation.instance.name}</span>
+            <span className="text-gray-400 dark:text-wa-text-secondary ml-2">via {conversation.instance.displayName ?? conversation.instance.name}</span>
           )}
         </div>
       </div>
 
       {conversation.assignedTo && (
-        <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 flex-shrink-0">
+        <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 dark:text-wa-text-secondary flex-shrink-0">
           <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
             <User size={10} className="text-blue-600" />
           </div>
@@ -48,7 +48,7 @@ export default function ConversationHeader({ conversation }: { conversation: Con
         </div>
       )}
 
-      <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+      <button className="p-1.5 text-gray-400 dark:text-wa-text-secondary hover:text-gray-600 dark:hover:text-wa-text-primary rounded-lg hover:bg-gray-100 dark:hover:bg-wa-bg-hover">
         <MoreVertical size={16} />
       </button>
     </div>
