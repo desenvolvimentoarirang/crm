@@ -4,25 +4,17 @@ CREATE TYPE "ConversationCategory" AS ENUM ('INQUIRY', 'BOOKING', 'SUPPORT', 'CO
 -- CreateEnum
 CREATE TYPE "Priority" AS ENUM ('LOW', 'NORMAL', 'HIGH', 'VIP');
 
--- AlterEnum: Add new values first, migrate data, then recreate without old values
--- Step 1: Add new values to existing Role enum
-ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SUPER_ADMIN';
-ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'CLIENT_ADMIN';
-ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'WORKER_TRUST';
-
--- Step 2: Migrate existing ADMIN users to SUPER_ADMIN
-UPDATE "users" SET "role" = 'SUPER_ADMIN' WHERE "role" = 'ADMIN';
-
--- Step 3: Recreate enum without ADMIN
-BEGIN;
+-- Recreate Role enum with new values (avoids ADD VALUE inside transaction)
 CREATE TYPE "Role_new" AS ENUM ('SUPER_ADMIN', 'CLIENT_ADMIN', 'WORKER', 'WORKER_TRUST');
+
+-- Migrate role column: drop default, cast via text, rename enums, restore default
 ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
+UPDATE "users" SET "role" = 'SUPER_ADMIN' WHERE "role" = 'ADMIN';
 ALTER TABLE "users" ALTER COLUMN "role" TYPE "Role_new" USING ("role"::text::"Role_new");
 ALTER TYPE "Role" RENAME TO "Role_old";
 ALTER TYPE "Role_new" RENAME TO "Role";
 DROP TYPE "Role_old";
 ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'WORKER';
-COMMIT;
 
 -- AlterTable: contacts
 ALTER TABLE "contacts" ADD COLUMN "isVip" BOOLEAN NOT NULL DEFAULT false;
