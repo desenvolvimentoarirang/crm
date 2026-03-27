@@ -100,19 +100,19 @@ function InstanceCard({ instance, onDeleted }: { instance: WhatsAppInstance & { 
     <div className="card p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-gray-900">{instance.displayName ?? instance.name}</h3>
-          <p className="text-sm text-gray-500 font-mono">{instance.name}</p>
-          {instance.phone && <p className="text-xs text-gray-400 mt-1">{instance.phone}</p>}
+          <h3 className="font-semibold text-gray-900 dark:text-wa-text-primary">{instance.displayName ?? instance.name}</h3>
+          <p className="text-sm text-gray-500 dark:text-wa-text-secondary font-mono">{instance.name}</p>
+          {instance.phone && <p className="text-xs text-gray-400 dark:text-wa-text-secondary mt-1">{instance.phone}</p>}
         </div>
         <div className="flex items-center gap-2">
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-            isConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+            isConnected ? 'bg-green-100 text-green-700 dark:bg-wa-accent/20 dark:text-wa-accent' : 'bg-gray-100 text-gray-600 dark:bg-wa-bg-hover dark:text-wa-text-secondary'
           }`}>
             {isConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
             {instance.liveStatus ?? instance.status}
           </span>
           <button
-            className="p-1.5 text-gray-400 hover:text-red-500 rounded"
+            className="p-1.5 text-gray-400 dark:text-wa-text-secondary hover:text-red-500 rounded"
             onClick={handleDelete}
             disabled={deleting}
             title="Delete instance"
@@ -124,7 +124,7 @@ function InstanceCard({ instance, onDeleted }: { instance: WhatsAppInstance & { 
 
       {qrData ? (
         <div className="text-center">
-          <p className="text-xs text-gray-500 mb-2">Scan with WhatsApp on your phone</p>
+          <p className="text-xs text-gray-500 dark:text-wa-text-secondary mb-2">Scan with WhatsApp on your phone</p>
           <img
             src={qrData.startsWith('data:') ? qrData : `data:image/png;base64,${qrData}`}
             alt="WhatsApp QR Code"
@@ -138,13 +138,13 @@ function InstanceCard({ instance, onDeleted }: { instance: WhatsAppInstance & { 
           </button>
         </div>
       ) : connecting ? (
-        <div className="flex flex-col items-center gap-3 py-4 text-gray-500">
-          <Loader2 size={28} className="animate-spin text-green-600" />
+        <div className="flex flex-col items-center gap-3 py-4 text-gray-500 dark:text-wa-text-secondary">
+          <Loader2 size={28} className="animate-spin text-green-600 dark:text-wa-accent" />
           <p className="text-sm">Generating QR code...</p>
-          <p className="text-xs text-gray-400">This may take a few seconds</p>
+          <p className="text-xs text-gray-400 dark:text-wa-text-secondary">This may take a few seconds</p>
         </div>
       ) : isConnected ? (
-        <div className="flex items-center gap-2 text-green-600 text-sm">
+        <div className="flex items-center gap-2 text-green-600 dark:text-wa-accent text-sm">
           <Wifi size={14} /> Connected and ready to receive messages
         </div>
       ) : (
@@ -179,10 +179,10 @@ function CreateInstanceModal({ onClose, onCreated }: { onClose: () => void; onCr
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="card p-6 w-full max-w-sm">
-        <h2 className="text-lg font-semibold mb-4">New WhatsApp Instance</h2>
+        <h2 className="text-lg font-semibold dark:text-wa-text-primary mb-4">New WhatsApp Instance</h2>
         <form onSubmit={submit} className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Instance name *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Instance name *</label>
             <input
               className="input w-full"
               placeholder="e.g. default"
@@ -192,7 +192,7 @@ function CreateInstanceModal({ onClose, onCreated }: { onClose: () => void; onCr
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Display name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Display name</label>
             <input
               className="input w-full"
               placeholder="e.g. Main WhatsApp"
@@ -236,8 +236,8 @@ export default function InstancesPage() {
       )}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">WhatsApp Instances</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your WhatsApp connections</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-wa-text-primary">WhatsApp Instances</h1>
+          <p className="text-sm text-gray-500 dark:text-wa-text-secondary mt-1">Manage your WhatsApp connections</p>
         </div>
         <button className="btn-primary" onClick={() => setShowCreate(true)}>
           <Plus size={16} /> Add Instance
@@ -248,9 +248,9 @@ export default function InstancesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(2)].map((_, i) => (
             <div key={i} className="card p-6 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
-              <div className="h-3 bg-gray-200 rounded w-1/3 mb-4" />
-              <div className="h-10 bg-gray-200 rounded" />
+              <div className="h-4 bg-gray-200 dark:bg-wa-bg-hover rounded w-1/2 mb-2" />
+              <div className="h-3 bg-gray-200 dark:bg-wa-bg-hover rounded w-1/3 mb-4" />
+              <div className="h-10 bg-gray-200 dark:bg-wa-bg-hover rounded" />
             </div>
           ))}
         </div>
@@ -260,7 +260,7 @@ export default function InstancesPage() {
             <InstanceCard key={instance.id} instance={instance} onDeleted={() => qc.invalidateQueries({ queryKey: ['instances'] })} />
           ))}
           {instances.length === 0 && (
-            <div className="col-span-3 card p-12 text-center text-gray-500">
+            <div className="col-span-3 card p-12 text-center text-gray-500 dark:text-wa-text-secondary">
               No instances yet. Add one to get started.
             </div>
           )}

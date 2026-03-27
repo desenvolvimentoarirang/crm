@@ -4,9 +4,9 @@ import type { Message } from '../../types'
 import clsx from 'clsx'
 
 const STATUS_ICON = {
-  PENDING: <Clock size={10} className="text-gray-400" />,
-  SENT: <Check size={10} className="text-gray-400" />,
-  DELIVERED: <CheckCheck size={10} className="text-gray-400" />,
+  PENDING: <Clock size={10} className="text-gray-400 dark:text-wa-text-secondary" />,
+  SENT: <Check size={10} className="text-gray-400 dark:text-wa-text-secondary" />,
+  DELIVERED: <CheckCheck size={10} className="text-gray-400 dark:text-wa-text-secondary" />,
   READ: <CheckCheck size={10} className="text-blue-500" />,
   FAILED: <Clock size={10} className="text-red-400" />,
 }
@@ -31,7 +31,7 @@ export default function MessageBubble({ message, showDate }: Props) {
     <>
       {showDate && (
         <div className="flex justify-center my-2">
-          <span className="text-xs text-gray-500 bg-white border border-gray-200 px-3 py-1 rounded-full">
+          <span className="text-xs text-gray-500 dark:text-wa-text-secondary bg-white dark:bg-wa-bg-panel border border-gray-200 dark:border-wa-border px-3 py-1 rounded-full">
             {format(new Date(message.timestamp), 'MMMM d, yyyy')}
           </span>
         </div>
@@ -42,13 +42,13 @@ export default function MessageBubble({ message, showDate }: Props) {
           className={clsx(
             'max-w-[70%] rounded-2xl px-3 py-2 shadow-sm',
             isOutbound
-              ? 'bg-green-600 text-white rounded-br-sm'
-              : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100',
+              ? 'bg-green-600 dark:bg-wa-bg-bubble-out text-white rounded-br-sm'
+              : 'bg-white dark:bg-wa-bg-bubble-in text-gray-900 dark:text-wa-text-primary rounded-bl-sm border border-gray-100 dark:border-wa-border',
           )}
         >
           {/* Media content */}
           {message.type !== 'TEXT' && message.type !== 'STICKER' && (
-            <div className={clsx('flex items-center gap-2 mb-1', isOutbound ? 'text-green-100' : 'text-gray-500')}>
+            <div className={clsx('flex items-center gap-2 mb-1', isOutbound ? 'text-green-100' : 'text-gray-500 dark:text-wa-text-secondary')}>
               {MEDIA_ICON[message.type as keyof typeof MEDIA_ICON]}
               <span className="text-xs">{message.type.toLowerCase()}</span>
               {message.fileName && <span className="text-xs truncate max-w-32">{message.fileName}</span>}
@@ -70,7 +70,7 @@ export default function MessageBubble({ message, showDate }: Props) {
 
           {/* Timestamp + status */}
           <div className={clsx('flex items-center gap-1 mt-1', isOutbound ? 'justify-end' : 'justify-start')}>
-            <span className={clsx('text-xs', isOutbound ? 'text-green-200' : 'text-gray-400')}>
+            <span className={clsx('text-xs', isOutbound ? 'text-green-200' : 'text-gray-400 dark:text-wa-text-secondary')}>
               {format(new Date(message.timestamp), 'HH:mm')}
             </span>
             {isOutbound && STATUS_ICON[message.status]}

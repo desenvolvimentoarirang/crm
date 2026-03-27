@@ -6,37 +6,66 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('🌱 Seeding database...')
 
-  // Admin user
-  const adminPassword = await bcrypt.hash('admin123', 12)
-  const admin = await prisma.user.upsert({
+  // Super Admin
+  const superAdminPassword = await bcrypt.hash('admin123', 12)
+  const superAdmin = await prisma.user.upsert({
     where: { email: 'admin@crm.com' },
-    update: {},
+    update: { role: Role.SUPER_ADMIN },
     create: {
       email: 'admin@crm.com',
-      password: adminPassword,
-      name: 'Administrator',
-      role: Role.ADMIN,
+      password: superAdminPassword,
+      name: 'Super Admin',
+      role: Role.SUPER_ADMIN,
     },
   })
 
-  // Worker user
+  // Client Admin (Travel Agency Boss)
+  const clientAdminPassword = await bcrypt.hash('agency123', 12)
+  const clientAdmin = await prisma.user.upsert({
+    where: { email: 'agency@crm.com' },
+    update: { role: Role.CLIENT_ADMIN },
+    create: {
+      email: 'agency@crm.com',
+      password: clientAdminPassword,
+      name: 'Travel Agency Admin',
+      role: Role.CLIENT_ADMIN,
+    },
+  })
+
+  // Worker (regular agent under the client admin)
   const workerPassword = await bcrypt.hash('worker123', 12)
   await prisma.user.upsert({
     where: { email: 'worker@crm.com' },
-    update: {},
+    update: { clientAdminId: clientAdmin.id },
     create: {
       email: 'worker@crm.com',
       password: workerPassword,
       name: 'Worker 1',
       role: Role.WORKER,
+      clientAdminId: clientAdmin.id,
     },
   })
 
-  // Default tags
+  // Trusted Worker (senior agent under the client admin)
+  const trustedPassword = await bcrypt.hash('trusted123', 12)
+  await prisma.user.upsert({
+    where: { email: 'trusted@crm.com' },
+    update: { clientAdminId: clientAdmin.id, role: Role.WORKER_TRUST },
+    create: {
+      email: 'trusted@crm.com',
+      password: trustedPassword,
+      name: 'Senior Agent',
+      role: Role.WORKER_TRUST,
+      clientAdminId: clientAdmin.id,
+    },
+  })
+
+  // Travel agency tags
   const tags = [
     { name: 'VIP', color: '#F59E0B' },
-    { name: 'Support', color: '#3B82F6' },
-    { name: 'Sales', color: '#10B981' },
+    { name: 'Inquiry', color: '#3B82F6' },
+    { name: 'Booking', color: '#10B981' },
+    { name: 'Support', color: '#6366F1' },
     { name: 'Complaint', color: '#EF4444' },
     { name: 'Follow-up', color: '#8B5CF6' },
   ]
@@ -49,19 +78,24 @@ async function main() {
     })
   }
 
-  // Default WhatsApp instance
+  // Default WhatsApp instance linked to the client admin
   await prisma.whatsAppInstance.upsert({
     where: { name: 'default' },
-    update: {},
+    update: { clientAdminId: clientAdmin.id },
     create: {
       name: 'default',
       displayName: 'Main WhatsApp',
       status: 'disconnected',
+      clientAdminId: clientAdmin.id,
     },
   })
 
-  console.log(`✅ Seeded: admin=${admin.email}`)
-  console.log('✅ Seeded: default tags and instance')
+  console.log('✅ Seeded users:')
+  console.log(`   Super Admin: admin@crm.com / admin123`)
+  console.log(`   Client Admin: agency@crm.com / agency123`)
+  console.log(`   Worker: worker@crm.com / worker123`)
+  console.log(`   Trusted Worker: trusted@crm.com / trusted123`)
+  console.log('✅ Seeded: tags and instance')
 }
 
 main()

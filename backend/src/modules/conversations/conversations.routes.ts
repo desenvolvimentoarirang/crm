@@ -4,6 +4,7 @@ import { prisma } from '../../config/database'
 import { authenticate } from '../../middleware/authenticate'
 import { notFound, forbidden } from '../../utils/errors'
 import { getPaginationParams, buildPaginatedResult } from '../../utils/pagination'
+import { canSeeAllConversations } from '../../utils/roles'
 
 export async function conversationsRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate] }
@@ -16,8 +17,21 @@ export async function conversationsRoutes(app: FastifyInstance) {
     if (query.status) where.status = query.status
     if (query.assignedToId) where.assignedToId = query.assignedToId
     if (query.instanceId) where.instanceId = query.instanceId
-    if (req.user.role === 'WORKER') {
-      where.OR = [{ assignedToId: req.user.id }, { assignedToId: null }]
+
+    // Scope filtering
+    if (req.user.role === 'SUPER_ADMIN') {
+      if (query.clientAdminId) where.clientAdminId = query.clientAdminId
+    } else if (req.user.role === 'CLIENT_ADMIN') {
+      where.clientAdminId = req.user.id
+    } else if (req.user.role === 'WORKER_TRUST') {
+      where.clientAdminId = req.scope
+    } else {
+      // WORKER: sees own assigned + OPEN unassigned in scope
+      where.clientAdminId = req.scope
+      where.OR = [
+        { assignedToId: req.user.id },
+        { assignedToId: null, status: 'OPEN' },
+      ]
     }
 
     const [conversations, total] = await prisma.$transaction([
@@ -54,9 +68,17 @@ export async function conversationsRoutes(app: FastifyInstance) {
       },
     })
     if (!conv) throw notFound('Conversation')
-    if (req.user.role === 'WORKER' && conv.assignedToId && conv.assignedToId !== req.user.id) {
-      throw forbidden()
+
+    // Scope check
+    if (req.user.role !== 'SUPER_ADMIN') {
+      if (conv.clientAdminId !== req.scope) throw forbidden()
+      if (req.user.role === 'WORKER') {
+        if (conv.assignedToId && conv.assignedToId !== req.user.id && conv.status !== 'OPEN') {
+          throw forbidden()
+        }
+      }
     }
+
     // Reset unread count
     await prisma.conversation.update({ where: { id }, data: { unreadCount: 0 } })
     return { ...conv, unreadCount: 0 }
@@ -68,7 +90,31 @@ export async function conversationsRoutes(app: FastifyInstance) {
       .object({ assignedToId: z.string().nullable() })
       .parse(req.body)
 
-    const conv = await prisma.conversation.update({
+    const conv = await prisma.conversation.findUnique({ where: { id } })
+    if (!conv) throw notFound('Conversation')
+
+    // Scope check
+    if (req.user.role !== 'SUPER_ADMIN' && conv.clientAdminId !== req.scope) {
+      throw forbidden()
+    }
+
+    // Workers can only self-assign unassigned conversations
+    if (req.user.role === 'WORKER') {
+      if (assignedToId !== req.user.id) throw forbidden('Workers can only self-assign')
+      if (conv.assignedToId && conv.assignedToId !== req.user.id) throw forbidden('Already assigned to another worker')
+    }
+
+    // Verify target worker is in the same scope
+    if (assignedToId) {
+      const targetUser = await prisma.user.findUnique({ where: { id: assignedToId } })
+      if (!targetUser) throw notFound('Target user')
+      if (req.user.role !== 'SUPER_ADMIN') {
+        const targetScope = targetUser.role === 'CLIENT_ADMIN' ? targetUser.id : targetUser.clientAdminId
+        if (targetScope !== req.scope) throw forbidden('Cannot assign to user outside your team')
+      }
+    }
+
+    const updated = await prisma.conversation.update({
       where: { id },
       data: {
         assignedToId,
@@ -80,11 +126,15 @@ export async function conversationsRoutes(app: FastifyInstance) {
       },
     })
 
-    // Broadcast via socket
-    app.io.to(`conversation:${id}`).emit('conversation:updated', conv)
-    app.io.emit('conversations:refresh')
+    // Broadcast via socket — scoped
+    app.io.to(`conversation:${id}`).emit('conversation:updated', updated)
+    if (conv.clientAdminId) {
+      app.io.to(`scope:${conv.clientAdminId}`).emit('conversations:refresh')
+    } else {
+      app.io.emit('conversations:refresh')
+    }
 
-    return conv
+    return updated
   })
 
   app.patch('/:id/status', auth, async (req) => {
@@ -95,6 +145,14 @@ export async function conversationsRoutes(app: FastifyInstance) {
       })
       .parse(req.body)
 
+    const existing = await prisma.conversation.findUnique({ where: { id } })
+    if (!existing) throw notFound('Conversation')
+
+    // Scope check
+    if (req.user.role !== 'SUPER_ADMIN' && existing.clientAdminId !== req.scope) {
+      throw forbidden()
+    }
+
     const conv = await prisma.conversation.update({
       where: { id },
       data: { status },
@@ -102,22 +160,40 @@ export async function conversationsRoutes(app: FastifyInstance) {
     })
 
     app.io.to(`conversation:${id}`).emit('conversation:updated', conv)
-    app.io.emit('conversations:refresh')
+    if (existing.clientAdminId) {
+      app.io.to(`scope:${existing.clientAdminId}`).emit('conversations:refresh')
+    } else {
+      app.io.emit('conversations:refresh')
+    }
 
     return conv
   })
 
-  // Stats (admin only)
+  // Stats — available to all authenticated users, scoped appropriately
   app.get('/stats/summary', auth, async (req) => {
-    if (req.user.role !== 'ADMIN') throw forbidden()
+    const scopeWhere: any = {}
+
+    if (req.user.role === 'SUPER_ADMIN') {
+      // Global stats — optionally filter by clientAdminId
+      const query = req.query as any
+      if (query.clientAdminId) scopeWhere.clientAdminId = query.clientAdminId
+    } else if (req.user.role === 'CLIENT_ADMIN') {
+      scopeWhere.clientAdminId = req.user.id
+    } else {
+      // WORKER / WORKER_TRUST — stats for their scope
+      scopeWhere.clientAdminId = req.scope
+    }
 
     const [open, inProgress, resolved, closed, totalMessages] = await prisma.$transaction([
-      prisma.conversation.count({ where: { status: 'OPEN' } }),
-      prisma.conversation.count({ where: { status: 'IN_PROGRESS' } }),
-      prisma.conversation.count({ where: { status: 'RESOLVED' } }),
-      prisma.conversation.count({ where: { status: 'CLOSED' } }),
+      prisma.conversation.count({ where: { ...scopeWhere, status: 'OPEN' } }),
+      prisma.conversation.count({ where: { ...scopeWhere, status: 'IN_PROGRESS' } }),
+      prisma.conversation.count({ where: { ...scopeWhere, status: 'RESOLVED' } }),
+      prisma.conversation.count({ where: { ...scopeWhere, status: 'CLOSED' } }),
       prisma.message.count({
-        where: { createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
+        where: {
+          createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) },
+          ...(Object.keys(scopeWhere).length > 0 ? { conversation: scopeWhere } : {}),
+        },
       }),
     ])
 

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
+import { Role } from '@prisma/client'
 import { prisma } from '../../config/database'
 import { redis } from '../../config/redis'
 import { env } from '../../config/env'
@@ -18,7 +19,7 @@ export async function loginService(
   if (!valid) throw unauthorized('Invalid credentials')
 
   const accessToken = app.jwt.sign(
-    { sub: user.id, email: user.email, role: user.role },
+    { sub: user.id, email: user.email, role: user.role, clientAdminId: user.clientAdminId },
     { expiresIn: env.JWT_EXPIRES_IN } as any,
   )
 
@@ -34,7 +35,13 @@ export async function loginService(
   return {
     accessToken,
     refreshToken,
-    user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      clientAdminId: user.clientAdminId,
+    },
   }
 }
 
@@ -51,13 +58,24 @@ export async function refreshService(app: FastifyInstance, rawToken: string) {
   if (!stored || stored.expiresAt < new Date()) throw unauthorized('Session expired')
 
   const accessToken = app.jwt.sign(
-    { sub: stored.user.id, email: stored.user.email, role: stored.user.role },
+    {
+      sub: stored.user.id,
+      email: stored.user.email,
+      role: stored.user.role,
+      clientAdminId: stored.user.clientAdminId,
+    },
     { expiresIn: env.JWT_EXPIRES_IN } as any,
   )
 
   return {
     accessToken,
-    user: { id: stored.user.id, email: stored.user.email, name: stored.user.name, role: stored.user.role },
+    user: {
+      id: stored.user.id,
+      email: stored.user.email,
+      name: stored.user.name,
+      role: stored.user.role,
+      clientAdminId: stored.user.clientAdminId,
+    },
   }
 }
 
@@ -68,7 +86,7 @@ export async function logoutService(rawToken: string) {
 }
 
 export async function registerService(
-  data: { email: string; password: string; name: string; role?: string }
+  data: { email: string; password: string; name: string; role?: Role; clientAdminId?: string | null }
 ) {
   const exists = await prisma.user.findUnique({ where: { email: data.email } })
   if (exists) throw conflict('Email already in use')
@@ -79,9 +97,10 @@ export async function registerService(
       email: data.email,
       password: hashed,
       name: data.name,
-      role: (data.role as any) ?? 'WORKER',
+      role: data.role ?? 'WORKER',
+      clientAdminId: data.clientAdminId ?? null,
     },
-    select: { id: true, email: true, name: true, role: true },
+    select: { id: true, email: true, name: true, role: true, clientAdminId: true },
   })
   return user
 }

@@ -5,6 +5,14 @@ export function registerSocketHandlers(io: Server) {
   io.on('connection', (socket: Socket) => {
     logger.debug({ socketId: socket.id }, 'Client connected')
 
+    // Join scope room for multi-tenant isolation
+    socket.on('scope:join', (scopeId: string) => {
+      if (scopeId) {
+        socket.join(`scope:${scopeId}`)
+        logger.debug({ socketId: socket.id, scopeId }, 'Joined scope room')
+      }
+    })
+
     // Join a conversation room to receive real-time messages
     socket.on('conversation:join', (conversationId: string) => {
       socket.join(`conversation:${conversationId}`)

@@ -50,9 +50,9 @@ export default function MessageInput({ conversationId, onSent }: Props) {
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white p-3">
+    <div className="border-t border-gray-200 dark:border-wa-border bg-white dark:bg-wa-bg-panel p-3">
       <div className="flex items-end gap-2">
-        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 flex-shrink-0">
+        <button className="p-2 text-gray-400 dark:text-wa-text-secondary hover:text-gray-600 dark:hover:text-wa-text-primary rounded-lg hover:bg-gray-100 dark:hover:bg-wa-bg-hover flex-shrink-0">
           <Paperclip size={18} />
         </button>
 
@@ -63,7 +63,7 @@ export default function MessageInput({ conversationId, onSent }: Props) {
             onChange={(e) => { setText(e.target.value); handleTyping() }}
             onKeyDown={handleKeyDown}
             placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-            className="w-full resize-none rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent max-h-40 min-h-[44px]"
+            className="w-full resize-none rounded-xl border border-gray-300 dark:border-wa-border dark:bg-wa-input-bg dark:text-wa-text-primary px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-wa-accent focus:border-transparent max-h-40 min-h-[44px] dark:placeholder-wa-text-secondary"
             rows={1}
             style={{ height: 'auto' }}
             onInput={(e) => {
@@ -77,7 +77,7 @@ export default function MessageInput({ conversationId, onSent }: Props) {
         <button
           onClick={handleSend}
           disabled={!text.trim() || sending}
-          className="w-10 h-10 rounded-xl bg-green-600 text-white flex items-center justify-center hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+          className="w-10 h-10 rounded-xl bg-green-600 dark:bg-wa-accent text-white flex items-center justify-center hover:bg-green-700 dark:hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
         >
           {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>

@@ -13,15 +13,20 @@ export async function contactsRoutes(app: FastifyInstance) {
     const { page, limit, skip } = getPaginationParams(query)
     const search = query.search as string | undefined
 
-    const where = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { phone: { contains: search } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {}
+    const where: any = {}
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' as const } },
+        { phone: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' as const } },
+      ]
+    }
+
+    // Scope filtering: non-super-admins only see contacts with conversations in their scope
+    if (req.user.role !== 'SUPER_ADMIN') {
+      where.conversations = { some: { clientAdminId: req.scope } }
+    }
 
     const [contacts, total] = await prisma.$transaction([
       prisma.contact.findMany({
@@ -61,6 +66,7 @@ export async function contactsRoutes(app: FastifyInstance) {
         name: z.string().optional(),
         email: z.string().email().optional(),
         notes: z.string().optional(),
+        isVip: z.boolean().optional(),
       })
       .parse(req.body)
 
@@ -79,6 +85,7 @@ export async function contactsRoutes(app: FastifyInstance) {
         name: z.string().optional(),
         email: z.string().email().optional(),
         notes: z.string().optional(),
+        isVip: z.boolean().optional(),
         tagIds: z.array(z.string()).optional(),
       })
       .parse(req.body)

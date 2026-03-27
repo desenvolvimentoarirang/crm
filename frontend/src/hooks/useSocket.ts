@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { connectSocket, disconnectSocket, getSocket } from '../config/socket'
 import { useAuthStore } from '../store/auth.store'
 import { useConversationStore } from '../store/conversation.store'
+import { getScope } from '../utils/roles'
 import type { Conversation, Message } from '../types'
 
 export function useSocket() {
@@ -19,6 +20,11 @@ export function useSocket() {
 
     socket.on('connect', () => {
       if (user?.id) socket.emit('agent:online', user.id)
+      // Join scope room for multi-tenant isolation
+      if (user) {
+        const scope = getScope(user)
+        if (scope) socket.emit('scope:join', scope)
+      }
     })
 
     socket.on('message:new', (message: Message) => {

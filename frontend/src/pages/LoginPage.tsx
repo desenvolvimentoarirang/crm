@@ -37,19 +37,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-wa-bg-deep dark:to-wa-bg-default flex items-center justify-center p-4">
       <div className="card w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center mb-4">
             <MessageSquare className="text-white" size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">CRM WhatsApp</h1>
-          <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-wa-text-primary">CRM WhatsApp</h1>
+          <p className="text-gray-500 dark:text-wa-text-secondary text-sm mt-1">Sign in to your account</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Email</label>
             <input
               {...register('email')}
               type="email"
@@ -61,7 +61,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Password</label>
             <input
               {...register('password')}
               type="password"
@@ -78,7 +78,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-xs text-gray-400 dark:text-wa-text-secondary mt-6">
           Default: admin@crm.com / admin123
         </p>
       </div>

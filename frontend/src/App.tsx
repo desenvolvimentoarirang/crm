@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth.store'
 import { useAuthInit } from './hooks/useAuthInit'
+import { isAdminRole, isSuperAdmin } from './utils/roles'
 import AppShell from './components/layout/AppShell'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -8,6 +9,7 @@ import ConversationsPage from './pages/ConversationsPage'
 import ContactsPage from './pages/ContactsPage'
 import UsersPage from './pages/UsersPage'
 import InstancesPage from './pages/InstancesPage'
+import ClientAdminsPage from './pages/ClientAdminsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.accessToken)
@@ -18,15 +20,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
   if (!user) return <Navigate to="/login" replace />
-  if (user.role !== 'ADMIN') return <Navigate to="/conversations" replace />
+  if (!isAdminRole(user.role)) return <Navigate to="/conversations" replace />
+  return <>{children}</>
+}
+
+function SuperAdminRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user)
+  if (!user) return <Navigate to="/login" replace />
+  if (!isSuperAdmin(user.role)) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
 export default function App() {
   const ready = useAuthInit()
 
-  // Aguarda a tentativa de refresh antes de renderizar as rotas
-  // Evita flash de redirect para /login quando o usuário já tem sessão válida
   if (!ready) return null
 
   return (
@@ -60,6 +67,14 @@ export default function App() {
               <AdminRoute>
                 <InstancesPage />
               </AdminRoute>
+            }
+          />
+          <Route
+            path="admin/clients"
+            element={
+              <SuperAdminRoute>
+                <ClientAdminsPage />
+              </SuperAdminRoute>
             }
           />
         </Route>

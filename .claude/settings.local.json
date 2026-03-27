@@ -1,7 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker-compose exec:*)"
+      "Bash(docker-compose exec:*)",
+      "Bash(find 'C:\\\\Users\\\\leone\\\\OneDrive\\\\Área de Trabalho\\\\Code\\\\crm_module' -type f -name *.ts -o -name *.prisma)",
+      "Bash(find /c/Users/leone/OneDrive/Área de Trabalho/Code/crm_module -type f -name *.tsx)",
+      "Bash(npx prisma:*)",
+      "Bash(npx --no-install prisma migrate dev --name multi_tenant_roles --create-only)",
+      "Bash(./node_modules/.bin/prisma --version)",
+      "Bash(ls node_modules/.bin/prisma*)",
+      "Bash(npm install:*)",
+      "Bash(node_modules/.bin/prisma --version)",
+      "Bash(node_modules/.bin/prisma migrate:*)",
+      "Bash(cd:*)",
+      "Bash(node_modules/.bin/prisma generate:*)",
+      "Bash(node -e \":*)",
+      "Bash(all commands)",
+      "Bash(npx --no-install tsx prisma/seed.ts)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/vite build:*)"
     ]
   }
 }

@@ -23,12 +23,12 @@ export default function ContactsPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
-        <div className="text-sm text-gray-500">{data?.pagination.total ?? 0} total</div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-wa-text-primary">Contacts</h1>
+        <div className="text-sm text-gray-500 dark:text-wa-text-secondary">{data?.pagination.total ?? 0} total</div>
       </div>
 
       <div className="relative mb-4">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-wa-text-secondary" />
         <input
           className="input pl-9"
           placeholder="Search by name, phone or email..."
@@ -42,10 +42,10 @@ export default function ContactsPage() {
           <div className="divide-y">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="p-4 animate-pulse flex gap-3">
-                <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                <div className="w-10 h-10 bg-gray-200 dark:bg-wa-bg-hover rounded-full" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-1/3" />
-                  <div className="h-3 bg-gray-200 rounded w-1/4" />
+                  <div className="h-4 bg-gray-200 dark:bg-wa-bg-hover rounded w-1/3" />
+                  <div className="h-3 bg-gray-200 dark:bg-wa-bg-hover rounded w-1/4" />
                 </div>
               </div>
             ))}
@@ -53,24 +53,24 @@ export default function ContactsPage() {
         ) : (
           <div className="divide-y">
             {data?.data.map((contact) => (
-              <div key={contact.id} className="p-4 flex items-center gap-4 hover:bg-gray-50">
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+              <div key={contact.id} className="p-4 flex items-center gap-4 hover:bg-gray-50 dark:hover:bg-wa-bg-hover">
+                <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-wa-accent/20 flex items-center justify-center flex-shrink-0">
                   {contact.profilePic ? (
                     <img src={contact.profilePic} className="w-10 h-10 rounded-full object-cover" alt="" />
                   ) : (
-                    <User size={16} className="text-green-600" />
+                    <User size={16} className="text-green-600 dark:text-wa-accent" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">
+                  <p className="font-medium text-gray-900 dark:text-wa-text-primary truncate">
                     {contact.name ?? contact.pushName ?? 'Unknown'}
                   </p>
                   <div className="flex gap-4 mt-0.5">
-                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                    <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-wa-text-secondary">
                       <Phone size={12} /> {contact.phone}
                     </span>
                     {contact.email && (
-                      <span className="flex items-center gap-1 text-xs text-gray-500">
+                      <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-wa-text-secondary">
                         <Mail size={12} /> {contact.email}
                       </span>
                     )}
@@ -87,13 +87,13 @@ export default function ContactsPage() {
                     </span>
                   ))}
                 </div>
-                <span className="text-xs text-gray-400 flex-shrink-0">
+                <span className="text-xs text-gray-400 dark:text-wa-text-secondary flex-shrink-0">
                   {format(new Date(contact.createdAt), 'MMM d')}
                 </span>
               </div>
             ))}
             {data?.data.length === 0 && (
-              <div className="p-12 text-center text-gray-500">No contacts found</div>
+              <div className="p-12 text-center text-gray-500 dark:text-wa-text-secondary">No contacts found</div>
             )}
           </div>
         )}
@@ -108,7 +108,7 @@ export default function ContactsPage() {
           >
             Previous
           </button>
-          <span className="px-3 py-2 text-sm text-gray-600">
+          <span className="px-3 py-2 text-sm text-gray-600 dark:text-wa-text-secondary">
             {data.pagination.page} / {data.pagination.totalPages}
           </span>
           <button
