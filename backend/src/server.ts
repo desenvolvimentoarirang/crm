@@ -5,6 +5,9 @@ import jwt from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
+import * as path from 'path'
+import * as fs from 'fs'
 import swagger from '@fastify/swagger'
 import swaggerUI from '@fastify/swagger-ui'
 import { Server } from 'socket.io'
@@ -68,6 +71,11 @@ export async function buildServer() {
 
   // ─── Multipart ─────────────────────────────────────────────────────────────
   await app.register(multipart, { limits: { fileSize: 16 * 1024 * 1024 } })
+
+  // ─── Static files (uploads) ────────────────────────────────────────────────
+  const uploadsDir = path.join(process.cwd(), 'uploads')
+  fs.mkdirSync(uploadsDir, { recursive: true })
+  await app.register(fastifyStatic, { root: uploadsDir, prefix: '/uploads/', decorateReply: false })
 
   // ─── Swagger ───────────────────────────────────────────────────────────────
   await app.register(swagger, {

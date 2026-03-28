@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, Building2, Users, MessageSquare, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react'
+import { UserPlus, Building2, Users, MessageSquare, ToggleLeft, ToggleRight, Loader2, Trash2 } from 'lucide-react'
 import { api } from '../config/api'
 import type { User, PaginatedResult } from '../types'
 import { getRoleBadgeColor, getRoleLabel } from '../utils/roles'
@@ -79,6 +79,17 @@ export default function ClientAdminsPage() {
     },
   })
 
+  const deleteAdmin = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/users/${id}`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-admins'] })
+      toast.success('Admin removed')
+    },
+    onError: () => toast.error('Failed to remove admin'),
+  })
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {showCreate && (
@@ -108,7 +119,7 @@ export default function ClientAdminsPage() {
             </div>
           ))
         ) : data?.map((admin) => (
-          <div key={admin.id} className="card p-6">
+          <div key={admin.id} className={`card p-6 ${!admin.isActive ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
@@ -119,20 +130,31 @@ export default function ClientAdminsPage() {
                   <p className="text-xs text-gray-500 dark:text-wa-text-secondary">{admin.email}</p>
                 </div>
               </div>
-              <button
-                onClick={() => toggleActive.mutate({ id: admin.id, isActive: !admin.isActive })}
-                className="text-gray-500 hover:text-gray-700 dark:text-wa-text-secondary"
-              >
-                {admin.isActive
-                  ? <ToggleRight size={22} className="text-green-600 dark:text-wa-accent" />
-                  : <ToggleLeft size={22} />}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => toggleActive.mutate({ id: admin.id, isActive: !admin.isActive })}
+                  className="text-gray-500 hover:text-gray-700 dark:text-wa-text-secondary"
+                  title={admin.isActive ? 'Disable' : 'Enable'}
+                >
+                  {admin.isActive
+                    ? <ToggleRight size={22} className="text-green-600 dark:text-wa-accent" />
+                    : <ToggleLeft size={22} />}
+                </button>
+                <button
+                  onClick={() => deleteAdmin.mutate(admin.id)}
+                  className="text-gray-400 hover:text-red-500 dark:text-wa-text-secondary dark:hover:text-red-400 p-1"
+                  title="Remove admin"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-wa-text-secondary">
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(admin.role)}`}>
                 {getRoleLabel(admin.role)}
               </span>
               <span>Created {format(new Date(admin.createdAt), 'MMM d, yyyy')}</span>
+              {!admin.isActive && <span className="text-red-500 dark:text-red-400 font-medium">Disabled</span>}
             </div>
           </div>
         ))}

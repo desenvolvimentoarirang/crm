@@ -47,10 +47,19 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
     if (!msg?.key?.remoteJid) continue
     // Skip group messages and status updates
     if (msg.key.remoteJid.endsWith('@g.us') || msg.key.remoteJid === 'status@broadcast') continue
+    // Skip protocol/system messages that have no actual content
+    if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) continue
 
     const phone = msg.key.remoteJid.replace('@s.whatsapp.net', '')
     const fromMe = msg.key.fromMe ?? false
     const evolutionId = msg.key.id
+
+    // Skip messages from the instance's own number (avoid self-contact)
+    if (fromMe) {
+      // Still process outbound messages but check if phone is the instance's own number
+      const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
+      if (instanceRecord?.phone && instanceRecord.phone === phone) continue
+    }
 
     // Upsert contact
     const contact = await prisma.contact.upsert({
@@ -82,6 +91,7 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
 
     // Extract message content early for categorization
     const msgContent = extractMessageContent(msg)
+    if (!msgContent) continue  // Skip unsupported message types silently
 
     // Determine priority and category for new conversations
     const priority = getPriorityFromVip(contact.isVip)
@@ -196,7 +206,14 @@ async function handleQRUpdate(app: FastifyInstance, instanceName: string, data: 
 }
 
 function extractMessageContent(msg: any) {
-  const content = msg.message ?? {}
+  let content = msg.message ?? {}
+
+  // Unwrap ephemeral, viewOnce, and edited message wrappers
+  if (content.ephemeralMessage) content = content.ephemeralMessage.message ?? content
+  if (content.viewOnceMessage) content = content.viewOnceMessage.message ?? content
+  if (content.viewOnceMessageV2) content = content.viewOnceMessageV2.message ?? content
+  if (content.editedMessage) content = content.editedMessage.message ?? content
+  if (content.documentWithCaptionMessage) content = content.documentWithCaptionMessage.message ?? content
 
   if (content.conversation || content.extendedTextMessage) {
     return {
@@ -253,5 +270,26 @@ function extractMessageContent(msg: any) {
     return { type: 'STICKER', body: undefined, mediaUrl: content.stickerMessage.url, mimeType: 'image/webp', fileName: undefined }
   }
 
-  return { type: 'TEXT', body: '[Unsupported message type]', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+  // Handle button/list responses as text
+  if (content.buttonsResponseMessage) {
+    return { type: 'TEXT', body: content.buttonsResponseMessage.selectedDisplayText ?? '', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+  }
+  if (content.listResponseMessage) {
+    return { type: 'TEXT', body: content.listResponseMessage.title ?? '', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+  }
+  if (content.templateButtonReplyMessage) {
+    return { type: 'TEXT', body: content.templateButtonReplyMessage.selectedDisplayText ?? '', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+  }
+
+  // Contact and location messages
+  if (content.contactMessage || content.contactsArrayMessage) {
+    const name = content.contactMessage?.displayName ?? 'Contact'
+    return { type: 'TEXT', body: `📇 ${name}`, mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+  }
+  if (content.locationMessage || content.liveLocationMessage) {
+    return { type: 'TEXT', body: '📍 Location', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+  }
+
+  // Skip unknown types silently instead of creating [Unsupported] messages
+  return null
 }

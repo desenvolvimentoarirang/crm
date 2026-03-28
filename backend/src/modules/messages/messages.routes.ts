@@ -5,6 +5,11 @@ import { authenticate } from '../../middleware/authenticate'
 import { notFound } from '../../utils/errors'
 import { baileysManager } from '../../services/baileys.service'
 import { getPaginationParams } from '../../utils/pagination'
+import { env } from '../../config/env'
+import * as fs from 'fs'
+import * as path from 'path'
+import { pipeline } from 'stream/promises'
+import { randomUUID } from 'crypto'
 
 export async function messagesRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate] }
@@ -31,13 +36,38 @@ export async function messagesRoutes(app: FastifyInstance) {
     return { messages: messages.reverse(), total, hasMore: skip + limit < total }
   })
 
+  // Upload file
+  app.post('/upload', auth, async (req, reply) => {
+    const file = await req.file()
+    if (!file) return reply.status(400).send({ message: 'No file uploaded' })
+
+    const ext = path.extname(file.filename) || ''
+    const fileName = `${randomUUID()}${ext}`
+    const uploadsDir = path.join(process.cwd(), 'uploads')
+    fs.mkdirSync(uploadsDir, { recursive: true })
+    const filePath = path.join(uploadsDir, fileName)
+
+    await pipeline(file.file, fs.createWriteStream(filePath))
+
+    const backendUrl = env.BACKEND_URL ?? `http://localhost:${env.PORT ?? 3000}`
+    const url = `${backendUrl}/uploads/${fileName}`
+
+    return reply.status(201).send({
+      url,
+      fileName: file.filename,
+      mimeType: file.mimetype,
+    })
+  })
+
   // Send message
   app.post('/send', auth, async (req, reply) => {
     const body = z
       .object({
         conversationId: z.string(),
-        text: z.string().min(1).optional(),
-        mediaUrl: z.string().url().optional(),
+        text: z.string().optional(),
+        mediaUrl: z.string().optional(),
+        fileName: z.string().optional(),
+        mimeType: z.string().optional(),
         type: z.enum(['TEXT', 'IMAGE', 'AUDIO', 'VIDEO', 'DOCUMENT']).default('TEXT'),
       })
       .parse(req.body)
@@ -48,15 +78,27 @@ export async function messagesRoutes(app: FastifyInstance) {
     })
     if (!conv) throw notFound('Conversation')
 
-    // Send via Baileys
+    const instanceName = conv.instance?.name ?? 'default'
     let evolutionId: string | undefined
+
     try {
-      const response = await baileysManager.sendText(
-        conv.instance?.name ?? 'default',
-        conv.contact.phone,
-        body.text ?? '',
-      )
-      evolutionId = response?.key?.id ?? undefined
+      if (body.type === 'TEXT') {
+        const response = await baileysManager.sendText(
+          instanceName,
+          conv.contact.phone,
+          body.text ?? '',
+        )
+        evolutionId = response?.key?.id ?? undefined
+      } else if (body.mediaUrl) {
+        const response = await baileysManager.sendMedia(instanceName, conv.contact.phone, {
+          type: body.type as 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT',
+          url: body.mediaUrl,
+          caption: body.text,
+          fileName: body.fileName,
+          mimeType: body.mimeType,
+        })
+        evolutionId = response?.key?.id ?? undefined
+      }
     } catch (err) {
       console.error('Baileys send failed:', err)
     }
@@ -68,6 +110,8 @@ export async function messagesRoutes(app: FastifyInstance) {
         type: body.type as any,
         body: body.text,
         mediaUrl: body.mediaUrl,
+        mimeType: body.mimeType,
+        fileName: body.fileName,
         evolutionId,
         status: evolutionId ? 'SENT' : 'PENDING',
         timestamp: new Date(),

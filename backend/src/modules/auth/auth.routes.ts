@@ -42,12 +42,13 @@ export async function authRoutes(app: FastifyInstance) {
     const { email, password } = loginBody.parse(req.body)
     const result = await loginService(app, email, password)
 
+    const isProduction = process.env.NODE_ENV === 'production'
     reply.setCookie('refreshToken', result.refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 7 * 24 * 3600,
-      path: '/api/auth',
+      path: '/',
     })
 
     return reply.send({ accessToken: result.accessToken, user: result.user })
@@ -63,7 +64,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/logout', { preHandler: [authenticate] }, async (req, reply) => {
     const rawToken = req.cookies?.refreshToken
     if (rawToken) await logoutService(rawToken)
-    reply.clearCookie('refreshToken', { path: '/api/auth' })
+    reply.clearCookie('refreshToken', { path: '/' })
     return reply.send({ message: 'Logged out' })
   })
 

@@ -1,15 +1,103 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, Shield, User, ToggleLeft, ToggleRight } from 'lucide-react'
+import { UserPlus, Shield, User, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react'
 import { api } from '../config/api'
-import type { User as UserType, PaginatedResult } from '../types'
+import type { User as UserType, PaginatedResult, Role } from '../types'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { getRoleBadgeColor, getRoleLabel } from '../utils/roles'
+import { useAuthStore } from '../store/auth.store'
+
+function CreateWorkerModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<Role>('WORKER')
+  const [clientAdminId, setClientAdminId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const currentUser = useAuthStore((s) => s.user)
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN'
+
+  const { data: admins } = useQuery({
+    queryKey: ['client-admins-list'],
+    queryFn: async () => {
+      const { data } = await api.get<PaginatedResult<UserType>>('/users', { params: { limit: 100 } })
+      return data.data.filter(u => u.role === 'CLIENT_ADMIN')
+    },
+    enabled: isSuperAdmin,
+  })
+
+  const availableRoles: { value: Role; label: string }[] = isSuperAdmin
+    ? [{ value: 'WORKER', label: 'Agent' }, { value: 'WORKER_TRUST', label: 'Senior Agent' }, { value: 'CLIENT_ADMIN', label: 'Admin' }]
+    : [{ value: 'WORKER', label: 'Agent' }, { value: 'WORKER_TRUST', label: 'Senior Agent' }]
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const payload: any = { name, email, password, role }
+      if (isSuperAdmin && (role === 'WORKER' || role === 'WORKER_TRUST') && clientAdminId) {
+        payload.clientAdminId = clientAdminId
+      }
+      await api.post('/users', payload)
+      toast.success('User created')
+      onCreated()
+      onClose()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to create user')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="card p-6 w-full max-w-sm">
+        <h2 className="text-lg font-semibold mb-4 dark:text-wa-text-primary">New User</h2>
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Name *</label>
+            <input className="input w-full" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Email *</label>
+            <input className="input w-full" type="email" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Password *</label>
+            <input className="input w-full" type="password" placeholder="Min 6 characters" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Role</label>
+            <select className="input w-full" value={role} onChange={e => setRole(e.target.value as Role)}>
+              {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          {isSuperAdmin && (role === 'WORKER' || role === 'WORKER_TRUST') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-wa-text-secondary mb-1">Assign to Admin</label>
+              <select className="input w-full" value={clientAdminId} onChange={e => setClientAdminId(e.target.value)}>
+                <option value="">None</option>
+                {admins?.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="flex gap-2 pt-2">
+            <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary flex-1" disabled={loading}>
+              {loading ? <Loader2 size={14} className="animate-spin" /> : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
 
 export default function UsersPage() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
+  const [showCreate, setShowCreate] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', page],
@@ -32,9 +120,16 @@ export default function UsersPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {showCreate && (
+        <CreateWorkerModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => qc.invalidateQueries({ queryKey: ['users'] })}
+        />
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-wa-text-primary">Team</h1>
-        <button className="btn-primary">
+        <button className="btn-primary" onClick={() => setShowCreate(true)}>
           <UserPlus size={16} /> Add User
         </button>
       </div>

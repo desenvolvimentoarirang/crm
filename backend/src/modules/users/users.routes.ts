@@ -16,7 +16,11 @@ export async function usersRoutes(app: FastifyInstance) {
     const query = req.query as any
     const { page, limit, skip } = getPaginationParams(query)
 
-    const where: any = { isActive: true }
+    const where: any = {}
+
+    // Allow filtering by isActive (default: show all)
+    if (query.isActive === 'true') where.isActive = true
+    else if (query.isActive === 'false') where.isActive = false
 
     if (req.user.role === 'SUPER_ADMIN') {
       // Optional filter by clientAdminId

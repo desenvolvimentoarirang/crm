@@ -56,11 +56,37 @@ export default function MessageBubble({ message, showDate }: Props) {
           )}
 
           {message.mediaUrl && message.type === 'IMAGE' && (
-            <img
+            <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
+              <img
+                src={message.mediaUrl}
+                alt="Image"
+                className="rounded-lg max-w-full mb-1 max-h-64 object-cover cursor-pointer"
+              />
+            </a>
+          )}
+
+          {message.mediaUrl && message.type === 'VIDEO' && (
+            <video
               src={message.mediaUrl}
-              alt="Image"
-              className="rounded-lg max-w-full mb-1 max-h-64 object-cover"
+              controls
+              className="rounded-lg max-w-full mb-1 max-h-64"
             />
+          )}
+
+          {message.mediaUrl && message.type === 'AUDIO' && (
+            <audio src={message.mediaUrl} controls className="max-w-full mb-1" />
+          )}
+
+          {message.mediaUrl && message.type === 'DOCUMENT' && (
+            <a
+              href={message.mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center gap-2 p-2 rounded-lg mb-1 ${isOutbound ? 'bg-green-700/30' : 'bg-gray-100 dark:bg-wa-bg-hover'}`}
+            >
+              <FileText size={20} />
+              <span className="text-sm underline truncate max-w-48">{message.fileName || 'Download file'}</span>
+            </a>
           )}
 
           {/* Text body */}

@@ -119,10 +119,18 @@ class BaileysManager {
   private async handleIncomingMessage(instanceName: string, msg: proto.IWebMessageInfo) {
     if (!msg.key?.remoteJid) return
     if (msg.key.remoteJid.endsWith('@g.us') || msg.key.remoteJid === 'status@broadcast') return
+    // Skip protocol/system messages
+    if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) return
 
     const phone = msg.key.remoteJid.replace('@s.whatsapp.net', '')
     const fromMe = msg.key.fromMe ?? false
     const messageId = msg.key.id ?? `msg_${Date.now()}`
+
+    // Skip messages from the instance's own number
+    if (fromMe) {
+      const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
+      if (instanceRecord?.phone && instanceRecord.phone === phone) return
+    }
 
     const contact = await prisma.contact.upsert({
       where: { phone },
@@ -158,6 +166,8 @@ class BaileysManager {
     })
 
     const msgContent = this.extractMessageContent(msg)
+    if (!msgContent) return  // Skip unsupported message types silently
+
     const message = await prisma.message.upsert({
       where: { evolutionId: messageId },
       update: { status: fromMe ? 'SENT' : 'READ' },
@@ -181,7 +191,14 @@ class BaileysManager {
   }
 
   private extractMessageContent(msg: proto.IWebMessageInfo) {
-    const content = msg.message ?? {}
+    let content: any = msg.message ?? {}
+
+    // Unwrap ephemeral, viewOnce, and edited message wrappers
+    if (content.ephemeralMessage) content = content.ephemeralMessage.message ?? content
+    if (content.viewOnceMessage) content = content.viewOnceMessage.message ?? content
+    if (content.viewOnceMessageV2) content = content.viewOnceMessageV2.message ?? content
+    if (content.editedMessage) content = content.editedMessage.message ?? content
+    if (content.documentWithCaptionMessage) content = content.documentWithCaptionMessage.message ?? content
 
     if (content.conversation || content.extendedTextMessage) {
       return {
@@ -208,11 +225,12 @@ class BaileysManager {
         fileName: undefined,
       }
     }
-    if (content.audioMessage) {
+    if (content.audioMessage || content.pttMessage) {
+      const audio = content.audioMessage ?? content.pttMessage
       return {
         type: 'AUDIO', body: undefined,
-        mediaUrl: content.audioMessage.url ?? undefined,
-        mimeType: content.audioMessage.mimetype ?? undefined,
+        mediaUrl: audio?.url ?? undefined,
+        mimeType: audio?.mimetype ?? undefined,
         fileName: undefined,
       }
     }
@@ -232,7 +250,19 @@ class BaileysManager {
         mimeType: 'image/webp', fileName: undefined,
       }
     }
-    return { type: 'TEXT', body: '[Unsupported message type]', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+    if (content.buttonsResponseMessage) {
+      return { type: 'TEXT', body: content.buttonsResponseMessage.selectedDisplayText ?? '', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+    }
+    if (content.listResponseMessage) {
+      return { type: 'TEXT', body: content.listResponseMessage.title ?? '', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+    }
+    if (content.contactMessage || content.contactsArrayMessage) {
+      return { type: 'TEXT', body: `📇 ${content.contactMessage?.displayName ?? 'Contact'}`, mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+    }
+    if (content.locationMessage || content.liveLocationMessage) {
+      return { type: 'TEXT', body: '📍 Location', mediaUrl: undefined, mimeType: undefined, fileName: undefined }
+    }
+    return null
   }
 
   async sendText(instanceName: string, phone: string, text: string) {
@@ -240,6 +270,36 @@ class BaileysManager {
     if (!session) throw new Error(`Instance "${instanceName}" is not connected`)
     const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`
     return session.socket.sendMessage(jid, { text })
+  }
+
+  async sendMedia(instanceName: string, phone: string, media: {
+    type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT'
+    url: string
+    caption?: string
+    fileName?: string
+    mimeType?: string
+  }) {
+    const session = this.sessions.get(instanceName)
+    if (!session) throw new Error(`Instance "${instanceName}" is not connected`)
+    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`
+
+    let msg: any
+    switch (media.type) {
+      case 'IMAGE':
+        msg = { image: { url: media.url }, caption: media.caption, mimetype: media.mimeType }
+        break
+      case 'VIDEO':
+        msg = { video: { url: media.url }, caption: media.caption, mimetype: media.mimeType }
+        break
+      case 'AUDIO':
+        msg = { audio: { url: media.url }, mimetype: media.mimeType ?? 'audio/mpeg', ptt: false }
+        break
+      case 'DOCUMENT':
+        msg = { document: { url: media.url }, mimetype: media.mimeType, fileName: media.fileName, caption: media.caption }
+        break
+    }
+
+    return session.socket.sendMessage(jid, msg)
   }
 
   async getQR(instanceName: string): Promise<string | null> {
