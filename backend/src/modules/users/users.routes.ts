@@ -26,8 +26,11 @@ export async function usersRoutes(app: FastifyInstance) {
       // Optional filter by clientAdminId
       if (query.clientAdminId) where.clientAdminId = query.clientAdminId
     } else if (req.user.role === 'CLIENT_ADMIN') {
-      // Only see own team members
-      where.clientAdminId = req.user.id
+      // See own team members + self
+      where.OR = [
+        { clientAdminId: req.user.id },
+        { id: req.user.id },
+      ]
     }
 
     const [users, total] = await prisma.$transaction([

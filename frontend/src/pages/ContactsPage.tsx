@@ -1,13 +1,30 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, User, Phone, Mail } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, User, Phone, Mail, MessageSquare } from 'lucide-react'
 import { api } from '../config/api'
+import { conversationsService } from '../services/conversations.service'
 import type { Contact, PaginatedResult } from '../types'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 
 export default function ContactsPage() {
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [startingChat, setStartingChat] = useState<string | null>(null)
+
+  const handleStartChat = async (contact: Contact) => {
+    setStartingChat(contact.id)
+    try {
+      const conv = await conversationsService.start(contact.phone)
+      navigate(`/conversations/${conv.id}`)
+    } catch {
+      toast.error('Failed to start conversation')
+    } finally {
+      setStartingChat(null)
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['contacts', search, page],
@@ -87,6 +104,14 @@ export default function ContactsPage() {
                     </span>
                   ))}
                 </div>
+                <button
+                  onClick={() => handleStartChat(contact)}
+                  disabled={startingChat === contact.id}
+                  className="p-2 text-green-600 dark:text-wa-accent hover:bg-green-50 dark:hover:bg-wa-accent/10 rounded-lg transition-colors flex-shrink-0"
+                  title="Send message"
+                >
+                  <MessageSquare size={16} />
+                </button>
                 <span className="text-xs text-gray-400 dark:text-wa-text-secondary flex-shrink-0">
                   {format(new Date(contact.createdAt), 'MMM d')}
                 </span>

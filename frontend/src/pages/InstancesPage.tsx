@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Wifi, WifiOff, Loader2, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, Wifi, WifiOff, Loader2, RefreshCw, Trash2, Users } from 'lucide-react'
 import { api } from '../config/api'
 import type { WhatsAppInstance } from '../types'
 import toast from 'react-hot-toast'
 import { getSocket } from '../config/socket'
 import { useSocket } from '../hooks/useSocket'
+
+interface GroupInfo {
+  id: string
+  subject: string
+  owner?: string
+  creation?: number
+  size: number
+  participants: { id: string; admin: string | null }[]
+}
 
 function InstanceCard({ instance, onDeleted }: { instance: WhatsAppInstance & { liveStatus?: string }; onDeleted: () => void }) {
   const [qrData, setQrData] = useState<string | null>(null)
@@ -212,6 +221,95 @@ function CreateInstanceModal({ onClose, onCreated }: { onClose: () => void; onCr
   )
 }
 
+function GroupsPanel({ instances }: { instances: (WhatsAppInstance & { liveStatus?: string })[] }) {
+  const connectedInstances = instances.filter((i) => i.liveStatus === 'open')
+  const [selectedInstance, setSelectedInstance] = useState<string>(connectedInstances[0]?.name ?? '')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!selectedInstance && connectedInstances.length > 0) {
+      setSelectedInstance(connectedInstances[0].name)
+    }
+  }, [connectedInstances.length])
+
+  const { data: groups = [], isLoading, error } = useQuery<GroupInfo[]>({
+    queryKey: ['groups', selectedInstance],
+    queryFn: async () => {
+      const { data } = await api.get(`/instances/${selectedInstance}/groups`)
+      return data
+    },
+    enabled: !!selectedInstance,
+    staleTime: 60000,
+  })
+
+  const filtered = groups.filter(
+    (g) => !search || g.subject.toLowerCase().includes(search.toLowerCase()),
+  )
+
+  if (connectedInstances.length === 0) {
+    return (
+      <div className="card p-8 text-center text-gray-500 dark:text-wa-text-secondary">
+        Connect an instance to view groups.
+      </div>
+    )
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="p-4 border-b border-gray-200 dark:border-wa-border flex flex-wrap items-center gap-3">
+        {connectedInstances.length > 1 && (
+          <select
+            className="input text-sm py-1.5"
+            value={selectedInstance}
+            onChange={(e) => setSelectedInstance(e.target.value)}
+          >
+            {connectedInstances.map((i) => (
+              <option key={i.name} value={i.name}>{i.displayName ?? i.name}</option>
+            ))}
+          </select>
+        )}
+        <div className="relative flex-1 min-w-[200px]">
+          <input
+            className="input text-sm py-1.5 pl-3 w-full"
+            placeholder="Search groups..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <span className="text-xs text-gray-500 dark:text-wa-text-secondary">{groups.length} groups</span>
+      </div>
+
+      {isLoading ? (
+        <div className="p-8 flex justify-center">
+          <Loader2 size={24} className="animate-spin text-green-600 dark:text-wa-accent" />
+        </div>
+      ) : error ? (
+        <div className="p-8 text-center text-red-500 text-sm">Failed to load groups</div>
+      ) : filtered.length === 0 ? (
+        <div className="p-8 text-center text-gray-500 dark:text-wa-text-secondary text-sm">No groups found</div>
+      ) : (
+        <div className="divide-y divide-gray-100 dark:divide-wa-border max-h-96 overflow-y-auto">
+          {filtered.map((group) => (
+            <div key={group.id} className="p-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-wa-bg-hover">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <Users size={16} className="text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm text-gray-900 dark:text-wa-text-primary truncate">
+                  {group.subject}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-wa-text-secondary">
+                  {group.size} participants
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function InstancesPage() {
   useSocket()
   const qc = useQueryClient()
@@ -244,6 +342,15 @@ export default function InstancesPage() {
         </button>
       </div>
 
+      {/* Groups section */}
+      {!isLoading && instances.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-wa-text-primary mb-3">WhatsApp Groups</h2>
+          <GroupsPanel instances={instances} />
+        </div>
+      )}
+
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-wa-text-primary mb-3">Instances</h2>
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(2)].map((_, i) => (

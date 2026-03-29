@@ -27,6 +27,11 @@ export const conversationsService = {
     return data
   },
 
+  async start(phone: string, instanceId?: string): Promise<Conversation> {
+    const { data } = await api.post('/conversations/start', { phone, instanceId })
+    return data
+  },
+
   async stats(): Promise<{
     open: number
     inProgress: number

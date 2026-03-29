@@ -57,6 +57,57 @@ export async function conversationsRoutes(app: FastifyInstance) {
     return buildPaginatedResult(conversations, total, page, limit)
   })
 
+  // ─── Start a new conversation with a contact ────────────────────────────
+  app.post('/start', auth, async (req, reply) => {
+    const body = z
+      .object({
+        phone: z.string().min(1),
+        instanceId: z.string().optional(),
+      })
+      .parse(req.body)
+
+    // Find or create the contact
+    const contact = await prisma.contact.upsert({
+      where: { phone: body.phone },
+      update: {},
+      create: { phone: body.phone },
+    })
+
+    // Find an instance to use — prefer the specified one, else pick the first connected
+    let instance
+    if (body.instanceId) {
+      instance = await prisma.whatsAppInstance.findUnique({ where: { id: body.instanceId } })
+    }
+    if (!instance) {
+      const scopeWhere: any = { isActive: true }
+      if (req.user.role === 'CLIENT_ADMIN') scopeWhere.clientAdminId = req.user.id
+      else if (req.user.role !== 'SUPER_ADMIN') scopeWhere.clientAdminId = req.scope
+      instance = await prisma.whatsAppInstance.findFirst({ where: scopeWhere, orderBy: { createdAt: 'asc' } })
+    }
+    if (!instance) return reply.status(400).send({ error: 'No active WhatsApp instance found' })
+
+    // Find or create the conversation
+    const conversation = await prisma.conversation.upsert({
+      where: { contactId_instanceId: { contactId: contact.id, instanceId: instance.id } },
+      update: {},
+      create: {
+        contactId: contact.id,
+        instanceId: instance.id,
+        clientAdminId: instance.clientAdminId,
+        status: 'OPEN',
+        lastMessageAt: new Date(),
+        unreadCount: 0,
+      },
+      include: {
+        contact: { include: { tags: { include: { tag: true } } } },
+        assignedTo: { select: { id: true, name: true, email: true } },
+        instance: { select: { id: true, name: true, displayName: true } },
+      },
+    })
+
+    return reply.status(201).send(conversation)
+  })
+
   app.get('/:id', auth, async (req) => {
     const { id } = req.params as { id: string }
     const conv = await prisma.conversation.findUnique({

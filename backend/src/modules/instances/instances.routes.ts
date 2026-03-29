@@ -100,6 +100,17 @@ export async function instancesRoutes(app: FastifyInstance) {
     return { state: dbInstance?.status ?? 'not_created' }
   })
 
+  // ─── Groups ─────────────────────────────────────────────────────────────
+  app.get('/:name/groups', auth, async (req, reply) => {
+    const { name } = req.params as { name: string }
+    try {
+      const groups = await baileysManager.fetchGroups(name)
+      return groups
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message })
+    }
+  })
+
   // ─── Delete ───────────────────────────────────────────────────────────────
   app.delete('/:name', adminOnly, async (req, reply) => {
     const { name } = req.params as { name: string }

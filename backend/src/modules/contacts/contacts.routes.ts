@@ -4,6 +4,7 @@ import { prisma } from '../../config/database'
 import { authenticate } from '../../middleware/authenticate'
 import { notFound } from '../../utils/errors'
 import { getPaginationParams, buildPaginatedResult } from '../../utils/pagination'
+import { baileysManager } from '../../services/baileys.service'
 
 export async function contactsRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate] }
@@ -106,6 +107,27 @@ export async function contactsRoutes(app: FastifyInstance) {
       include: { tags: { include: { tag: true } } },
     })
     return contact
+  })
+
+  // Refresh profile picture for a contact
+  app.post('/:id/refresh-pic', auth, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const contact = await prisma.contact.findUnique({ where: { id } })
+    if (!contact) throw notFound('Contact')
+
+    // Try to get pic from any active instance
+    const instances = await prisma.whatsAppInstance.findMany({ where: { isActive: true, status: 'open' } })
+    let pic: string | undefined
+    for (const inst of instances) {
+      pic = await baileysManager.getProfilePicture(inst.name, contact.phone).catch(() => undefined)
+      if (pic) break
+    }
+
+    if (pic) {
+      await prisma.contact.update({ where: { id }, data: { profilePic: pic } })
+      return { profilePic: pic }
+    }
+    return reply.status(404).send({ error: 'Profile picture not available' })
   })
 
   app.delete('/:id', { preHandler: [authenticate] }, async (req, reply) => {

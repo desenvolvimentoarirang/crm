@@ -138,6 +138,14 @@ class BaileysManager {
       create: { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined },
     })
 
+    // Fetch profile picture if not set
+    if (!contact.profilePic) {
+      const pic = await this.getProfilePicture(instanceName, phone).catch(() => undefined)
+      if (pic) {
+        await prisma.contact.update({ where: { id: contact.id }, data: { profilePic: pic } })
+      }
+    }
+
     const instance = await prisma.whatsAppInstance.upsert({
       where: { name: instanceName },
       update: {},
@@ -309,6 +317,34 @@ class BaileysManager {
     }
 
     return session.socket.sendMessage(jid, msg)
+  }
+
+  async getProfilePicture(instanceName: string, jid: string): Promise<string | undefined> {
+    const session = this.sessions.get(instanceName)
+    if (!session) return undefined
+    try {
+      const fullJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`
+      return await session.socket.profilePictureUrl(fullJid, 'image') ?? undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  async fetchGroups(instanceName: string) {
+    const session = this.sessions.get(instanceName)
+    if (!session) throw new Error(`Instance "${instanceName}" is not connected`)
+    const groups = await session.socket.groupFetchAllParticipating()
+    return Object.values(groups).map((g: any) => ({
+      id: g.id,
+      subject: g.subject,
+      owner: g.owner,
+      creation: g.creation,
+      size: g.size ?? g.participants?.length ?? 0,
+      participants: g.participants?.map((p: any) => ({
+        id: p.id,
+        admin: p.admin ?? null,
+      })) ?? [],
+    }))
   }
 
   async getQR(instanceName: string): Promise<string | null> {
