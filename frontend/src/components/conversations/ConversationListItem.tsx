@@ -60,9 +60,16 @@ export default function ConversationListItem({ conversation, isActive, onClick }
             </span>
           )}
         </div>
-        {conversation.assignedTo && (
-          <p className="text-xs text-blue-500 mt-0.5 truncate">→ {conversation.assignedTo.name}</p>
-        )}
+        <div className="flex items-center gap-2 mt-0.5">
+          {conversation.instance && (
+            <span className="text-[10px] text-gray-400 dark:text-wa-text-secondary truncate">
+              {conversation.instance.displayName ?? conversation.instance.name}
+            </span>
+          )}
+          {conversation.assignedTo && (
+            <span className="text-xs text-blue-500 truncate">→ {conversation.assignedTo.name}</span>
+          )}
+        </div>
       </div>
     </button>
   )

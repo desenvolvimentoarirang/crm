@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { connectSocket, disconnectSocket, getSocket } from '../config/socket'
 import { useAuthStore } from '../store/auth.store'
 import { useConversationStore } from '../store/conversation.store'
@@ -12,6 +13,7 @@ export function useSocket() {
   const activeId = useConversationStore((s) => s.activeConversationId)
   const appendMessage = useConversationStore((s) => s.appendMessage)
   const incrementUnread = useConversationStore((s) => s.incrementUnread)
+  const qc = useQueryClient()
 
   useEffect(() => {
     if (!accessToken) return
@@ -36,6 +38,8 @@ export function useSocket() {
 
     socket.on('conversation:updated', (conversation: Conversation) => {
       upsertConversation(conversation)
+      // Also invalidate the single conversation query so detail/header refresh immediately
+      qc.invalidateQueries({ queryKey: ['conversation', conversation.id] })
     })
 
     socket.on('conversations:refresh', () => {

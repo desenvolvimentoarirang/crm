@@ -33,6 +33,17 @@ export function useConversations(params?: {
 }
 
 export function useConversation(id: string) {
+  const qc = useQueryClient()
+
+  // Listen for real-time updates to this specific conversation
+  useEffect(() => {
+    const handler = () => {
+      if (id) qc.invalidateQueries({ queryKey: ['conversation', id] })
+    }
+    window.addEventListener('conversations:refresh', handler)
+    return () => window.removeEventListener('conversations:refresh', handler)
+  }, [qc, id])
+
   return useQuery({
     queryKey: ['conversation', id],
     queryFn: () => conversationsService.get(id),
@@ -45,7 +56,10 @@ export function useAssignConversation() {
   return useMutation({
     mutationFn: ({ id, assignedToId }: { id: string; assignedToId: string | null }) =>
       conversationsService.assign(id, assignedToId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['conversations'] })
+      qc.invalidateQueries({ queryKey: ['conversation', variables.id] })
+    },
   })
 }
 
@@ -54,6 +68,9 @@ export function useUpdateConversationStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: ConversationStatus }) =>
       conversationsService.updateStatus(id, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['conversations'] })
+      qc.invalidateQueries({ queryKey: ['conversation', variables.id] })
+    },
   })
 }

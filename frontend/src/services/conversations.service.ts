@@ -7,6 +7,7 @@ export const conversationsService = {
     limit?: number
     status?: ConversationStatus
     assignedToId?: string
+    instanceId?: string
   }): Promise<PaginatedResult<Conversation>> {
     const { data } = await api.get('/conversations', { params })
     return data

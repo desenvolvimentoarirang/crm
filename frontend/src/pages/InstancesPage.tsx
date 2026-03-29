@@ -22,7 +22,7 @@ function InstanceCard({ instance, onDeleted }: { instance: WhatsAppInstance & { 
   const [deleting, setDeleting] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
 
-  const isConnected = instance.liveStatus === 'open'
+  const isConnected = instance.liveStatus === 'connected' || instance.status === 'open'
 
   const stopPolling = () => {
     if (pollRef.current) clearInterval(pollRef.current)
@@ -222,7 +222,7 @@ function CreateInstanceModal({ onClose, onCreated }: { onClose: () => void; onCr
 }
 
 function GroupsPanel({ instances }: { instances: (WhatsAppInstance & { liveStatus?: string })[] }) {
-  const connectedInstances = instances.filter((i) => i.liveStatus === 'open')
+  const connectedInstances = instances.filter((i) => i.liveStatus === 'connected' || i.status === 'open')
   const [selectedInstance, setSelectedInstance] = useState<string>(connectedInstances[0]?.name ?? '')
   const [search, setSearch] = useState('')
 
