@@ -90,6 +90,16 @@ async function main() {
     },
   })
 
+  // Fix orphan conversations/instances missing clientAdminId
+  await prisma.whatsAppInstance.updateMany({
+    where: { clientAdminId: null },
+    data: { clientAdminId: clientAdmin.id },
+  })
+  await prisma.conversation.updateMany({
+    where: { clientAdminId: null },
+    data: { clientAdminId: clientAdmin.id },
+  })
+
   console.log('✅ Seeded users:')
   console.log(`   Super Admin: admin@crm.com / admin123`)
   console.log(`   Client Admin: agency@crm.com / agency123`)

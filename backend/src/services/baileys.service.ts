@@ -154,6 +154,7 @@ class BaileysManager {
       create: {
         contactId: contact.id,
         instanceId: instance.id,
+        clientAdminId: instance.clientAdminId,
         status: 'OPEN',
         lastMessageAt: new Date(),
         unreadCount: fromMe ? 0 : 1,
@@ -185,8 +186,16 @@ class BaileysManager {
       },
     })
 
+    // Broadcast via Socket.io — scoped
+    const conversationWithMessage = { ...conversation, messages: [message] }
     this.io?.to(`conversation:${conversation.id}`).emit('message:new', message)
-    this.io?.emit('conversation:updated', conversation)
+    if (conversation.clientAdminId) {
+      this.io?.to(`scope:${conversation.clientAdminId}`).emit('conversation:updated', conversationWithMessage)
+      this.io?.to(`scope:${conversation.clientAdminId}`).emit('conversations:refresh')
+    } else {
+      this.io?.emit('conversation:updated', conversationWithMessage)
+      this.io?.emit('conversations:refresh')
+    }
     logger.info({ conversationId: conversation.id, phone, fromMe }, 'Message processed')
   }
 
