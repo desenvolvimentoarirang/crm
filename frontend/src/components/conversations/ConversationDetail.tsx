@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { User, Mail, HandMetal } from 'lucide-react'
+import { User, Users, Mail, HandMetal } from 'lucide-react'
 import { useAssignConversation, useUpdateConversationStatus } from '../../hooks/useConversations'
 import { useAuthStore } from '../../store/auth.store'
 import { canAssignConversations } from '../../utils/roles'
@@ -48,9 +48,13 @@ export default function ConversationDetail({ conversation }: { conversation: Con
       {/* Contact info */}
       <div className="p-4 border-b border-gray-200 dark:border-wa-border">
         <div className="flex flex-col items-center text-center mb-4">
-          <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-wa-accent/20 flex items-center justify-center mb-3 overflow-hidden">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-3 overflow-hidden ${
+            contact.isGroup ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-green-100 dark:bg-wa-accent/20'
+          }`}>
             {contact.profilePic ? (
               <img src={contact.profilePic} className="w-full h-full object-cover" alt="" />
+            ) : contact.isGroup ? (
+              <Users size={24} className="text-blue-600 dark:text-blue-400" />
             ) : (
               <User size={24} className="text-green-600 dark:text-wa-accent" />
             )}

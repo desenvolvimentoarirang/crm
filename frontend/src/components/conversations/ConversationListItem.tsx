@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns'
-import { User } from 'lucide-react'
+import { User, Users } from 'lucide-react'
 import type { Conversation } from '../../types'
 import clsx from 'clsx'
 
@@ -32,9 +32,14 @@ export default function ConversationListItem({ conversation, isActive, onClick }
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-wa-bg-hover flex items-center justify-center overflow-hidden">
+        <div className={clsx(
+          'w-10 h-10 rounded-full flex items-center justify-center overflow-hidden',
+          contact.isGroup ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-gray-200 dark:bg-wa-bg-hover',
+        )}>
           {contact.profilePic ? (
             <img src={contact.profilePic} className="w-full h-full object-cover" alt="" />
+          ) : contact.isGroup ? (
+            <Users size={16} className="text-blue-600 dark:text-blue-400" />
           ) : (
             <User size={16} className="text-gray-500 dark:text-wa-text-secondary" />
           )}

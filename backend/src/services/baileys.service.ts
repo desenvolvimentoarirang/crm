@@ -118,24 +118,43 @@ class BaileysManager {
 
   private async handleIncomingMessage(instanceName: string, msg: proto.IWebMessageInfo) {
     if (!msg.key?.remoteJid) return
-    if (msg.key.remoteJid.endsWith('@g.us') || msg.key.remoteJid === 'status@broadcast') return
+    if (msg.key.remoteJid === 'status@broadcast') return
     // Skip protocol/system messages
     if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) return
 
-    const phone = msg.key.remoteJid.replace('@s.whatsapp.net', '')
+    const isGroup = msg.key.remoteJid.endsWith('@g.us')
+    const phone = isGroup
+      ? msg.key.remoteJid
+      : msg.key.remoteJid.replace('@s.whatsapp.net', '')
     const fromMe = msg.key.fromMe ?? false
     const messageId = msg.key.id ?? `msg_${Date.now()}`
 
-    // Skip messages from the instance's own number
-    if (fromMe) {
+    // Skip messages from the instance's own number — only for 1-on-1
+    if (fromMe && !isGroup) {
       const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
       if (instanceRecord?.phone && instanceRecord.phone === phone) return
     }
 
+    // For groups, try to get the group subject as the name
+    let groupName: string | undefined
+    if (isGroup) {
+      try {
+        const session = this.sessions.get(instanceName)
+        if (session) {
+          const metadata = await session.socket.groupMetadata(msg.key.remoteJid)
+          groupName = metadata?.subject
+        }
+      } catch { /* ignore — use JID as fallback */ }
+    }
+
+    const contactData = isGroup
+      ? { phone, name: groupName ?? phone, isGroup: true }
+      : { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined }
+
     const contact = await prisma.contact.upsert({
       where: { phone },
-      update: { pushName: msg.pushName ?? undefined },
-      create: { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined },
+      update: isGroup ? { name: groupName ?? undefined } : { pushName: msg.pushName ?? undefined },
+      create: contactData,
     })
 
     // Fetch profile picture if not set
@@ -324,6 +343,7 @@ class BaileysManager {
     if (!session) return undefined
     try {
       const fullJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`
+      // Groups use @g.us, individuals use @s.whatsapp.net — both handled above
       return await session.socket.profilePictureUrl(fullJid, 'image') ?? undefined
     } catch {
       return undefined

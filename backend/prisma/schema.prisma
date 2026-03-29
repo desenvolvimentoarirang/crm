@@ -110,6 +110,7 @@ model Contact {
   profilePic  String?
   notes       String?
   isVip       Boolean  @default(false)
+  isGroup     Boolean  @default(false)
   metadata    Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -45,38 +45,39 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
 
   for (const msg of messages) {
     if (!msg?.key?.remoteJid) continue
-    // Skip group messages and status updates
-    if (msg.key.remoteJid.endsWith('@g.us') || msg.key.remoteJid === 'status@broadcast') continue
+    // Skip status updates
+    if (msg.key.remoteJid === 'status@broadcast') continue
     // Skip protocol/system messages that have no actual content
     if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) continue
 
-    const phone = msg.key.remoteJid.replace('@s.whatsapp.net', '')
+    const isGroup = msg.key.remoteJid.endsWith('@g.us')
+    const phone = isGroup
+      ? msg.key.remoteJid
+      : msg.key.remoteJid.replace('@s.whatsapp.net', '')
     const fromMe = msg.key.fromMe ?? false
     const evolutionId = msg.key.id
 
-    // Skip messages from the instance's own number (avoid self-contact)
-    if (fromMe) {
-      // Still process outbound messages but check if phone is the instance's own number
+    // Skip messages from the instance's own number (avoid self-contact) — only for 1-on-1
+    if (fromMe && !isGroup) {
       const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
       if (instanceRecord?.phone && instanceRecord.phone === phone) continue
     }
 
-    // Upsert contact
+    // Upsert contact (for groups, use the group JID as phone)
+    const contactData = isGroup
+      ? { phone, name: msg.pushName ?? phone, isGroup: true }
+      : { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined }
+
     const contact = await prisma.contact.upsert({
       where: { phone },
-      update: {
-        pushName: msg.pushName ?? undefined,
-      },
-      create: {
-        phone,
-        name: msg.pushName ?? undefined,
-        pushName: msg.pushName ?? undefined,
-      },
+      update: isGroup ? {} : { pushName: msg.pushName ?? undefined },
+      create: contactData,
     })
 
     // Fetch profile picture if not set
     if (!contact.profilePic) {
-      const pic = await evolutionApi.getProfilePicture(instanceName, phone).catch(() => undefined)
+      const jidForPic = isGroup ? phone : phone
+      const pic = await evolutionApi.getProfilePicture(instanceName, jidForPic).catch(() => undefined)
       if (pic) {
         await prisma.contact.update({ where: { id: contact.id }, data: { profilePic: pic } })
       }

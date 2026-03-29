@@ -31,6 +31,7 @@ export interface Contact {
   profilePic?: string
   notes?: string
   isVip?: boolean
+  isGroup?: boolean
   createdAt: string
   tags: { tag: Tag }[]
 }

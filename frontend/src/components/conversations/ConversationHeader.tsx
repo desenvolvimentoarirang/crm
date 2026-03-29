@@ -1,4 +1,4 @@
-import { MoreVertical, User, Phone } from 'lucide-react'
+import { MoreVertical, User, Users, Phone } from 'lucide-react'
 import type { Conversation } from '../../types'
 import clsx from 'clsx'
 
@@ -15,9 +15,14 @@ export default function ConversationHeader({ conversation }: { conversation: Con
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-wa-border bg-white dark:bg-wa-bg-panel">
-      <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-wa-bg-hover flex items-center justify-center overflow-hidden flex-shrink-0">
+      <div className={clsx(
+        'w-9 h-9 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0',
+        contact.isGroup ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-gray-200 dark:bg-wa-bg-hover',
+      )}>
         {contact.profilePic ? (
           <img src={contact.profilePic} className="w-full h-full object-cover" alt="" />
+        ) : contact.isGroup ? (
+          <Users size={16} className="text-blue-600 dark:text-blue-400" />
         ) : (
           <User size={16} className="text-gray-500 dark:text-wa-text-secondary" />
         )}
