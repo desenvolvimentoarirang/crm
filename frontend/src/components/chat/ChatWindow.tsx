@@ -52,7 +52,10 @@ export default function ChatWindow({ conversation }: { conversation: Conversatio
   }, [localMessages.length === 0 ? 0 : 1])
 
   const handleSent = (message: Message) => {
-    setLocalMessages((prev) => [...prev, message])
+    setLocalMessages((prev) => {
+      const exists = prev.find((m) => m.id === message.id)
+      return exists ? prev : [...prev, message]
+    })
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
   }
 

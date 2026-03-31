@@ -51,9 +51,11 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
     if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) continue
 
     const isGroup = msg.key.remoteJid.endsWith('@g.us')
-    const phone = isGroup
+    const rawPhone = isGroup
       ? msg.key.remoteJid
-      : msg.key.remoteJid.replace('@s.whatsapp.net', '')
+      : msg.key.remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
+    // Normalize: strip +, leading zeros, whitespace, dashes
+    const phone = isGroup ? rawPhone : rawPhone.replace(/[\s\-\+]/g, '').replace(/^0+/, '')
     const fromMe = msg.key.fromMe ?? false
     const evolutionId = msg.key.id
 
@@ -63,14 +65,21 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
       if (instanceRecord?.phone && instanceRecord.phone === phone) continue
     }
 
+    // For groups, try to get the group name from the message or use JID as fallback
+    // (msg.pushName in group messages is the SENDER's name, not the group name)
+    let groupName: string | undefined
+    if (isGroup) {
+      groupName = msg.groupName ?? msg.subject ?? undefined
+    }
+
     // Upsert contact (for groups, use the group JID as phone)
     const contactData = isGroup
-      ? { phone, name: msg.pushName ?? phone, isGroup: true }
+      ? { phone, name: groupName ?? phone, isGroup: true }
       : { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined }
 
     const contact = await prisma.contact.upsert({
       where: { phone },
-      update: isGroup ? {} : { pushName: msg.pushName ?? undefined },
+      update: isGroup ? { name: groupName ?? undefined } : { pushName: msg.pushName ?? undefined },
       create: contactData,
     })
 
@@ -99,12 +108,18 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
     const category = categorizeMessage(msgContent.body ?? '')
     const slaDeadline = calculateSlaDeadline(priority)
 
+    // Check existing conversation to avoid resetting IN_PROGRESS/RESOLVED status
+    const existingConv = await prisma.conversation.findUnique({
+      where: { contactId_instanceId: { contactId: contact.id, instanceId: instance.id } },
+    })
+    const shouldSetOpen = !fromMe && (!existingConv || existingConv.status === 'CLOSED')
+
     // Upsert conversation (inherit clientAdminId from instance)
     const conversation = await prisma.conversation.upsert({
       where: { contactId_instanceId: { contactId: contact.id, instanceId: instance.id } },
       update: {
         lastMessageAt: new Date(),
-        status: fromMe ? undefined : 'OPEN',
+        status: shouldSetOpen ? 'OPEN' : undefined,
         unreadCount: fromMe ? undefined : { increment: 1 },
       },
       create: {

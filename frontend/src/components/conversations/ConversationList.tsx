@@ -10,6 +10,7 @@ const STATUS_TABS: { label: string; value: ConversationStatus | 'ALL' }[] = [
   { label: 'Open', value: 'OPEN' },
   { label: 'In Progress', value: 'IN_PROGRESS' },
   { label: 'Resolved', value: 'RESOLVED' },
+  { label: 'Closed', value: 'CLOSED' },
 ]
 
 interface Props {
@@ -60,7 +61,10 @@ export default function ConversationList({ activeId, onSelect, isLoading }: Prop
   }
 
   const filtered = conversations.filter((conv) => {
-    const matchesStatus = statusFilter === 'ALL' || conv.status === statusFilter
+    // "All" excludes closed conversations — use the "Closed" tab to see them
+    const matchesStatus = statusFilter === 'ALL'
+      ? conv.status !== 'CLOSED'
+      : conv.status === statusFilter
     const contact = conv.contact
     const name = contact.name ?? contact.pushName ?? contact.phone
     const matchesSearch = !search || name.toLowerCase().includes(search.toLowerCase()) || contact.phone.includes(search)

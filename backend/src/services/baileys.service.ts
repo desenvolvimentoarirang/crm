@@ -3,6 +3,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  downloadMediaMessage,
   WASocket,
   proto,
 } from '@whiskeysockets/baileys'
@@ -11,11 +12,14 @@ import * as fs from 'fs'
 import * as path from 'path'
 import pino from 'pino'
 import QRCode from 'qrcode'
+import { randomUUID } from 'crypto'
 import { prisma } from '../config/database'
 import { redis } from '../config/redis'
 import { logger } from '../utils/logger'
+import { env } from '../config/env'
 
 const SESSIONS_DIR = path.join(process.cwd(), 'baileys-sessions')
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
 const baileysLogger = pino({ level: 'silent' })
 
 interface SessionInfo {
@@ -123,9 +127,11 @@ class BaileysManager {
     if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) return
 
     const isGroup = msg.key.remoteJid.endsWith('@g.us')
-    const phone = isGroup
+    const rawPhone = isGroup
       ? msg.key.remoteJid
-      : msg.key.remoteJid.replace('@s.whatsapp.net', '')
+      : msg.key.remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
+    // Normalize: strip +, leading zeros, whitespace, dashes
+    const phone = isGroup ? rawPhone : rawPhone.replace(/[\s\-\+]/g, '').replace(/^0+/, '')
     const fromMe = msg.key.fromMe ?? false
     const messageId = msg.key.id ?? `msg_${Date.now()}`
 
@@ -171,11 +177,19 @@ class BaileysManager {
       create: { name: instanceName, displayName: instanceName },
     })
 
+    // Check existing conversation to avoid resetting IN_PROGRESS/RESOLVED status
+    const existingConv = await prisma.conversation.findUnique({
+      where: { contactId_instanceId: { contactId: contact.id, instanceId: instance.id } },
+    })
+    // Only set status to OPEN for inbound messages if conversation doesn't exist yet
+    // or is currently CLOSED (reopen it). Don't reset IN_PROGRESS/RESOLVED.
+    const shouldSetOpen = !fromMe && (!existingConv || existingConv.status === 'CLOSED')
+
     const conversation = await prisma.conversation.upsert({
       where: { contactId_instanceId: { contactId: contact.id, instanceId: instance.id } },
       update: {
         lastMessageAt: new Date(),
-        status: fromMe ? undefined : 'OPEN',
+        status: shouldSetOpen ? 'OPEN' : undefined,
         unreadCount: fromMe ? undefined : { increment: 1 },
       },
       create: {
@@ -196,6 +210,32 @@ class BaileysManager {
     const msgContent = this.extractMessageContent(msg)
     if (!msgContent) return  // Skip unsupported message types silently
 
+    // Download media from WhatsApp and save locally (WhatsApp URLs are encrypted/temporary)
+    if (msgContent.mediaUrl && ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER'].includes(msgContent.type)) {
+      try {
+        const session = this.sessions.get(instanceName)
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}, {
+          logger: baileysLogger as any,
+          reuploadRequest: session?.socket.updateMediaMessage ?? (async (m: any) => m),
+        })
+        if (buffer) {
+          fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+          const ext = this.mimeToExtension(msgContent.mimeType)
+          const fileName = `${randomUUID()}${ext}`
+          const filePath = path.join(UPLOADS_DIR, fileName)
+          fs.writeFileSync(filePath, buffer)
+          const backendUrl = env.BACKEND_URL ?? `http://localhost:${env.PORT ?? 3000}`
+          msgContent.mediaUrl = `${backendUrl}/uploads/${fileName}`
+          logger.info({ instanceName, fileName, type: msgContent.type }, 'Media downloaded and saved')
+        }
+      } catch (err) {
+        logger.error({ instanceName, err: (err as Error).message, type: msgContent.type }, 'Failed to download media')
+      }
+    }
+
+    // Check if this message already exists (sent via API) to avoid duplicate broadcasts
+    const existingMessage = await prisma.message.findUnique({ where: { evolutionId: messageId } })
+
     const message = await prisma.message.upsert({
       where: { evolutionId: messageId },
       update: { status: fromMe ? 'SENT' : 'READ' },
@@ -212,6 +252,12 @@ class BaileysManager {
         status: fromMe ? 'SENT' : 'DELIVERED',
       },
     })
+
+    // Skip broadcast for outbound messages that were already sent via API (avoid duplicates)
+    if (existingMessage && fromMe) {
+      logger.debug({ conversationId: conversation.id, messageId }, 'Skipping broadcast for already-sent message')
+      return
+    }
 
     // Broadcast via Socket.io — scoped
     const conversationWithMessage = { ...conversation, messages: [message] }
@@ -301,6 +347,21 @@ class BaileysManager {
     return null
   }
 
+  private mimeToExtension(mimeType?: string): string {
+    if (!mimeType) return ''
+    const map: Record<string, string> = {
+      'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp',
+      'video/mp4': '.mp4', 'video/3gpp': '.3gp',
+      'audio/ogg': '.ogg', 'audio/ogg; codecs=opus': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac',
+      'application/pdf': '.pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+      'application/msword': '.doc',
+      'text/plain': '.txt',
+    }
+    return map[mimeType] ?? ''
+  }
+
   async sendText(instanceName: string, phone: string, text: string) {
     const session = this.sessions.get(instanceName)
     if (!session) throw new Error(`Instance "${instanceName}" is not connected`)
@@ -328,7 +389,7 @@ class BaileysManager {
         msg = { video: { url: media.url }, caption: media.caption, mimetype: media.mimeType }
         break
       case 'AUDIO':
-        msg = { audio: { url: media.url }, mimetype: media.mimeType ?? 'audio/mpeg', ptt: false }
+        msg = { audio: { url: media.url }, mimetype: media.mimeType ?? 'audio/ogg; codecs=opus', ptt: true }
         break
       case 'DOCUMENT':
         msg = { document: { url: media.url }, mimetype: media.mimeType, fileName: media.fileName, caption: media.caption }
@@ -392,12 +453,13 @@ class BaileysManager {
     const instances = await prisma.whatsAppInstance.findMany({ where: { isActive: true } })
     for (const inst of instances) {
       const sessionDir = path.join(SESSIONS_DIR, inst.name)
-      if (fs.existsSync(sessionDir)) {
-        logger.info({ instanceName: inst.name }, 'Restoring session')
-        await this.createSession(inst.name).catch((err) => {
-          logger.error({ instanceName: inst.name, err: err.message }, 'Failed to restore session')
-        })
-      }
+      const hasSession = fs.existsSync(sessionDir)
+      logger.info({ instanceName: inst.name, hasSession }, 'Restoring session')
+      // Always try to create session — if session files are missing (e.g. after deploy),
+      // Baileys will generate a new QR code so the user can reconnect manually.
+      await this.createSession(inst.name).catch((err) => {
+        logger.error({ instanceName: inst.name, err: err.message }, 'Failed to restore session')
+      })
     }
   }
 }
