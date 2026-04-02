@@ -26,7 +26,8 @@
       "Bash(find '/c/Users/leone/OneDrive/Área de Trabalho/Code/crm_module/frontend/src' -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
       "Bash(docker exec:*)",
       "Bash(docker compose:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)"
     ]
   }
 }

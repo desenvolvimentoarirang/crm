@@ -170,6 +170,15 @@ class BaileysManager {
     let fromMe = msg.key.fromMe ?? false
     const messageId = msg.key.id ?? `msg_${Date.now()}`
 
+    // Deduplicate: if another handler (e.g. Evolution webhook) is already processing
+    // this exact message, skip to avoid race conditions creating duplicate conversations.
+    const lockKey = `msg-lock:${messageId}`
+    const acquired = await redis.set(lockKey, 'baileys', 'EX', 30, 'NX')
+    if (!acquired) {
+      logger.debug({ instanceName, messageId }, 'Message already being processed by another handler — skipping')
+      return
+    }
+
     // Cross-check fromMe using participant JID for groups (Baileys multi-device
     // doesn't always set fromMe correctly for messages sent from the phone)
     if (isGroup && !fromMe && msg.key.participant) {

@@ -72,6 +72,15 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
     const fromMe = msg.key.fromMe ?? false
     const evolutionId = msg.key.id
 
+    // Deduplicate: if another handler (e.g. Baileys) is already processing
+    // this exact message, skip to avoid race conditions creating duplicate conversations.
+    const lockKey = `msg-lock:${evolutionId}`
+    const acquired = await redis.set(lockKey, 'webhook', 'EX', 30, 'NX')
+    if (!acquired) {
+      logger.debug({ instanceName, evolutionId }, 'Message already being processed by another handler — skipping')
+      continue
+    }
+
     // Skip messages from the instance's own number (avoid self-contact) — only for 1-on-1
     if (fromMe && !isGroup) {
       const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
