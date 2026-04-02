@@ -18,7 +18,7 @@ RUN npm run build
 FROM node:20-slim AS runner
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y openssl wget git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl wget git ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm ci --omit=dev
@@ -39,7 +39,7 @@ ENTRYPOINT ["./docker-entrypoint.sh"]
 FROM node:20-slim AS development
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y openssl wget git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl wget git ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm install
@@ -50,4 +50,7 @@ RUN npx prisma generate
 COPY . .
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+COPY docker-entrypoint-dev.sh ./
+RUN chmod +x docker-entrypoint-dev.sh
+
+CMD ["./docker-entrypoint-dev.sh"]

@@ -20,6 +20,10 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/uploads': {
+        target: process.env.VITE_API_URL ?? 'http://crm-backend:3000',
+        changeOrigin: true,
+      },
     },
   },
   build: {

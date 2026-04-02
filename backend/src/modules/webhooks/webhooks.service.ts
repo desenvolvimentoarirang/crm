@@ -3,6 +3,7 @@ import { prisma } from '../../config/database'
 import { evolutionApi } from '../../services/evolution-api.service'
 import { logger } from '../../utils/logger'
 import { redis } from '../../config/redis'
+import { isLidUser } from '@whiskeysockets/baileys'
 import { categorizeMessage } from '../../services/categorization.service'
 import { calculateSlaDeadline, getPriorityFromVip } from '../../services/sla.service'
 
@@ -51,9 +52,21 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
     if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) continue
 
     const isGroup = msg.key.remoteJid.endsWith('@g.us')
-    const rawPhone = isGroup
+    const isLid = isLidUser(msg.key.remoteJid)
+    let rawPhone = isGroup
       ? msg.key.remoteJid
-      : msg.key.remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
+      : msg.key.remoteJid.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '')
+    // LID JIDs can have a `:agent` or `:device` suffix (e.g. "5511999@lid:23:0") — strip it
+    if (!isGroup) rawPhone = rawPhone.split(':')[0]
+    // Resolve LID to real phone number
+    if (isLid) {
+      const resolved = await redis.get(`lid:${rawPhone}`).catch(() => null)
+      if (resolved) {
+        rawPhone = resolved
+      } else {
+        logger.info({ lid: rawPhone, remoteJid: msg.key.remoteJid }, 'LID not yet resolved — using LID as temporary phone')
+      }
+    }
     // Normalize: strip +, leading zeros, whitespace, dashes
     const phone = isGroup ? rawPhone : rawPhone.replace(/[\s\-\+]/g, '').replace(/^0+/, '')
     const fromMe = msg.key.fromMe ?? false
@@ -73,13 +86,16 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
     }
 
     // Upsert contact (for groups, use the group JID as phone)
+    // When fromMe is true, msg.pushName is the SENDER's (our) name, not the contact's.
+    // Only use pushName for inbound messages where it represents the contact.
+    const inboundPushName = !fromMe ? (msg.pushName ?? undefined) : undefined
     const contactData = isGroup
       ? { phone, name: groupName ?? phone, isGroup: true }
-      : { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined }
+      : { phone, name: inboundPushName, pushName: inboundPushName }
 
     const contact = await prisma.contact.upsert({
       where: { phone },
-      update: isGroup ? { name: groupName ?? undefined } : { pushName: msg.pushName ?? undefined },
+      update: isGroup ? { name: groupName ?? undefined } : (inboundPushName ? { pushName: inboundPushName } : {}),
       create: contactData,
     })
 
@@ -158,16 +174,16 @@ async function handleMessageUpsert(app: FastifyInstance, instanceName: string, d
       },
     })
 
-    // Broadcast via Socket.io — scoped
+    // Broadcast via Socket.io — scoped + global for SUPER_ADMIN
     const conversationWithMessage = { ...conversation, messages: [message] }
     app.io.to(`conversation:${conversation.id}`).emit('message:new', message)
     if (conversation.clientAdminId) {
       app.io.to(`scope:${conversation.clientAdminId}`).emit('conversation:updated', conversationWithMessage)
       app.io.to(`scope:${conversation.clientAdminId}`).emit('conversations:refresh')
-    } else {
-      app.io.emit('conversation:updated', conversationWithMessage)
-      app.io.emit('conversations:refresh')
     }
+    // Always emit to global scope so SUPER_ADMIN gets updates
+    app.io.to('scope:global').emit('conversation:updated', conversationWithMessage)
+    app.io.to('scope:global').emit('conversations:refresh')
 
     logger.info({ conversationId: conversation.id, phone, fromMe }, 'Message processed')
   }

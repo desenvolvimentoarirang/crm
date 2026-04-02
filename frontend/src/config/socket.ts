@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client'
 
 let socket: Socket | null = null
 
-const socketUrl = import.meta.env.VITE_API_URL || ''
+const socketUrl = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '')
 
 export function getSocket(): Socket {
   if (!socket) {

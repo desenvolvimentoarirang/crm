@@ -177,13 +177,12 @@ export async function conversationsRoutes(app: FastifyInstance) {
       },
     })
 
-    // Broadcast via socket — scoped
+    // Broadcast via socket — scoped + global for SUPER_ADMIN
     app.io.to(`conversation:${id}`).emit('conversation:updated', updated)
     if (conv.clientAdminId) {
       app.io.to(`scope:${conv.clientAdminId}`).emit('conversations:refresh')
-    } else {
-      app.io.emit('conversations:refresh')
     }
+    app.io.to('scope:global').emit('conversations:refresh')
 
     return updated
   })
@@ -213,9 +212,8 @@ export async function conversationsRoutes(app: FastifyInstance) {
     app.io.to(`conversation:${id}`).emit('conversation:updated', conv)
     if (existing.clientAdminId) {
       app.io.to(`scope:${existing.clientAdminId}`).emit('conversations:refresh')
-    } else {
-      app.io.emit('conversations:refresh')
     }
+    app.io.to('scope:global').emit('conversations:refresh')
 
     return conv
   })

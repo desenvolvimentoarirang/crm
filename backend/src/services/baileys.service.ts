@@ -29,6 +29,8 @@ interface SessionInfo {
 class BaileysManager {
   private sessions = new Map<string, SessionInfo>()
   private io: any = null
+  // Maps LID user (e.g. "48584804286714") → phone (e.g. "5592915553338")
+  private lidToPhone = new Map<string, string>()
 
   setIO(io: any) {
     this.io = io
@@ -118,6 +120,25 @@ class BaileysManager {
         })
       }
     })
+
+    // Build LID → phone mapping from contacts and phoneNumberShare events
+    socket.ev.on('contacts.upsert', (contacts) => {
+      for (const c of contacts) {
+        if (c.lid && c.id && !c.id.endsWith('@lid')) {
+          const lidUser = c.lid.replace(/@lid$/, '').split(':')[0]
+          const phoneUser = c.id.replace(/@s\.whatsapp\.net$/, '').split(':')[0]
+          this.storeLidMapping(lidUser, phoneUser)
+        }
+      }
+    })
+
+    socket.ev.on('chats.phoneNumberShare' as any, (data: { lid: string; jid: string }) => {
+      if (data?.lid && data?.jid) {
+        const lidUser = data.lid.replace(/@lid$/, '').split(':')[0]
+        const phoneUser = data.jid.replace(/@s\.whatsapp\.net$/, '').split(':')[0]
+        this.storeLidMapping(lidUser, phoneUser)
+      }
+    })
   }
 
   private async handleIncomingMessage(instanceName: string, msg: proto.IWebMessageInfo) {
@@ -127,18 +148,103 @@ class BaileysManager {
     if (msg.message?.protocolMessage || msg.message?.reactionMessage || msg.message?.senderKeyDistributionMessage) return
 
     const isGroup = msg.key.remoteJid.endsWith('@g.us')
-    const rawPhone = isGroup
+    const isLid = msg.key.remoteJid.endsWith('@lid')
+    let rawPhone = isGroup
       ? msg.key.remoteJid
-      : msg.key.remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
+      : msg.key.remoteJid.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '')
+    // LID JIDs can have a `:agent` or `:device` suffix (e.g. "5511999@lid:23:0") — strip it
+    if (!isGroup) rawPhone = rawPhone.split(':')[0]
+    // Resolve LID to real phone number if possible
+    if (isLid) {
+      const resolved = await this.resolveLid(rawPhone)
+      if (resolved) {
+        rawPhone = resolved
+      } else {
+        // Accept the message using the LID as temporary identifier — it will be
+        // merged when the contacts.upsert event provides the real phone later.
+        logger.info({ instanceName, lid: rawPhone, remoteJid: msg.key.remoteJid }, 'LID not yet resolved — using LID as temporary phone')
+      }
+    }
     // Normalize: strip +, leading zeros, whitespace, dashes
     const phone = isGroup ? rawPhone : rawPhone.replace(/[\s\-\+]/g, '').replace(/^0+/, '')
-    const fromMe = msg.key.fromMe ?? false
+    let fromMe = msg.key.fromMe ?? false
     const messageId = msg.key.id ?? `msg_${Date.now()}`
+
+    // Cross-check fromMe using participant JID for groups (Baileys multi-device
+    // doesn't always set fromMe correctly for messages sent from the phone)
+    if (isGroup && !fromMe && msg.key.participant) {
+      const session = this.sessions.get(instanceName)
+      const myUser = session?.socket.user
+      if (myUser?.id) {
+        const myPhone = myUser.id.split(':')[0].split('@')[0]
+        let participantId = msg.key.participant.replace(/@.*$/, '').split(':')[0]
+        // If participant is a LID, try to resolve it to a real phone for comparison
+        if (msg.key.participant.endsWith('@lid')) {
+          const resolved = await this.resolveLid(participantId)
+          if (resolved) participantId = resolved
+        }
+        // Also compare against our own LID if participant is a LID and we couldn't resolve
+        const myLid = (myUser as any).lid?.replace(/@.*$/, '').split(':')[0]
+        if (myPhone === participantId || (myLid && myLid === msg.key.participant.replace(/@.*$/, '').split(':')[0])) {
+          fromMe = true
+        }
+      }
+    }
 
     // Skip messages from the instance's own number — only for 1-on-1
     if (fromMe && !isGroup) {
       const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
       if (instanceRecord?.phone && instanceRecord.phone === phone) return
+    }
+
+    // If this is a real phone (not LID), check if a LID-based contact exists for this
+    // number and merge it — prevents duplicate conversations when inbound uses LID
+    // but outbound (from cellphone) uses real phone.
+    if (!isLid && !isGroup) {
+      try {
+        const lidForPhone = await redis.get(`lid-reverse:${phone}`).catch(() => null)
+        if (lidForPhone) {
+          const lidContact = await prisma.contact.findUnique({ where: { phone: lidForPhone } })
+          if (lidContact) {
+            const realContact = await prisma.contact.findUnique({ where: { phone } })
+            if (realContact) {
+              // Both exist — merge LID conversations into real contact
+              // First, handle conversations that would conflict on (contactId, instanceId)
+              const lidConversations = await prisma.conversation.findMany({ where: { contactId: lidContact.id } })
+              for (const lidConv of lidConversations) {
+                const existingConv = await prisma.conversation.findUnique({
+                  where: { contactId_instanceId: { contactId: realContact.id, instanceId: lidConv.instanceId } },
+                })
+                if (existingConv) {
+                  // Move messages from LID conversation to real conversation
+                  await prisma.message.updateMany({
+                    where: { conversationId: lidConv.id },
+                    data: { conversationId: existingConv.id },
+                  })
+                  await prisma.conversation.delete({ where: { id: lidConv.id } })
+                } else {
+                  // No conflict — just reassign
+                  await prisma.conversation.update({
+                    where: { id: lidConv.id },
+                    data: { contactId: realContact.id },
+                  })
+                }
+              }
+              await prisma.contact.delete({ where: { id: lidContact.id } })
+              logger.info({ lid: lidForPhone, phone }, 'Merged LID contact into real phone contact')
+            } else {
+              // Only LID contact exists — update its phone to the real number
+              await prisma.contact.update({
+                where: { id: lidContact.id },
+                data: { phone },
+              })
+              logger.info({ lid: lidForPhone, phone }, 'Updated LID contact to real phone number')
+            }
+          }
+        }
+      } catch (err) {
+        logger.error({ phone, err: (err as Error).message }, 'Failed to merge LID contact before upsert')
+      }
     }
 
     // For groups, try to get the group subject as the name
@@ -153,13 +259,15 @@ class BaileysManager {
       } catch { /* ignore — use JID as fallback */ }
     }
 
+    // When fromMe is true, msg.pushName is the SENDER's (our) name, not the contact's.
+    const inboundPushName = !fromMe ? (msg.pushName ?? undefined) : undefined
     const contactData = isGroup
       ? { phone, name: groupName ?? phone, isGroup: true }
-      : { phone, name: msg.pushName ?? undefined, pushName: msg.pushName ?? undefined }
+      : { phone, name: inboundPushName, pushName: inboundPushName }
 
     const contact = await prisma.contact.upsert({
       where: { phone },
-      update: isGroup ? { name: groupName ?? undefined } : { pushName: msg.pushName ?? undefined },
+      update: isGroup ? { name: groupName ?? undefined } : (inboundPushName ? { pushName: inboundPushName } : {}),
       create: contactData,
     })
 
@@ -224,8 +332,7 @@ class BaileysManager {
           const fileName = `${randomUUID()}${ext}`
           const filePath = path.join(UPLOADS_DIR, fileName)
           fs.writeFileSync(filePath, buffer)
-          const backendUrl = env.BACKEND_URL ?? `http://localhost:${env.PORT ?? 3000}`
-          msgContent.mediaUrl = `${backendUrl}/uploads/${fileName}`
+          msgContent.mediaUrl = `/uploads/${fileName}`
           logger.info({ instanceName, fileName, type: msgContent.type }, 'Media downloaded and saved')
         }
       } catch (err) {
@@ -259,16 +366,16 @@ class BaileysManager {
       return
     }
 
-    // Broadcast via Socket.io — scoped
+    // Broadcast via Socket.io — scoped + global for SUPER_ADMIN
     const conversationWithMessage = { ...conversation, messages: [message] }
     this.io?.to(`conversation:${conversation.id}`).emit('message:new', message)
     if (conversation.clientAdminId) {
       this.io?.to(`scope:${conversation.clientAdminId}`).emit('conversation:updated', conversationWithMessage)
       this.io?.to(`scope:${conversation.clientAdminId}`).emit('conversations:refresh')
-    } else {
-      this.io?.emit('conversation:updated', conversationWithMessage)
-      this.io?.emit('conversations:refresh')
     }
+    // Always emit to global scope so SUPER_ADMIN gets updates
+    this.io?.to('scope:global').emit('conversation:updated', conversationWithMessage)
+    this.io?.to('scope:global').emit('conversations:refresh')
     logger.info({ conversationId: conversation.id, phone, fromMe }, 'Message processed')
   }
 
@@ -362,6 +469,54 @@ class BaileysManager {
     return map[mimeType] ?? ''
   }
 
+  /** Store a LID → phone mapping in memory and Redis, and merge any temporary LID contact */
+  private async storeLidMapping(lidUser: string, phoneUser: string) {
+    this.lidToPhone.set(lidUser, phoneUser)
+    redis.set(`lid:${lidUser}`, phoneUser).catch(() => {})
+    redis.set(`lid-reverse:${phoneUser}`, lidUser).catch(() => {})
+    logger.info({ lid: lidUser, phone: phoneUser }, 'LID → phone mapping stored')
+
+    // If a temporary contact was created with the LID as phone, merge it
+    try {
+      const lidContact = await prisma.contact.findUnique({ where: { phone: lidUser } })
+      if (lidContact) {
+        const realContact = await prisma.contact.findUnique({ where: { phone: phoneUser } })
+        if (realContact) {
+          // Real contact already exists — move conversations from LID contact to real contact, then delete LID contact
+          await prisma.conversation.updateMany({
+            where: { contactId: lidContact.id },
+            data: { contactId: realContact.id },
+          })
+          await prisma.contact.delete({ where: { id: lidContact.id } })
+          logger.info({ lid: lidUser, phone: phoneUser }, 'Merged LID contact into existing phone contact')
+        } else {
+          // No real contact yet — just update the LID contact's phone
+          await prisma.contact.update({
+            where: { id: lidContact.id },
+            data: { phone: phoneUser },
+          })
+          logger.info({ lid: lidUser, phone: phoneUser }, 'Updated LID contact phone to real number')
+        }
+      }
+    } catch (err) {
+      logger.error({ lid: lidUser, phone: phoneUser, err: (err as Error).message }, 'Failed to merge LID contact')
+    }
+  }
+
+  /** Resolve a LID user to a real phone number, checking memory then Redis */
+  private async resolveLid(lidUser: string): Promise<string | undefined> {
+    // Check in-memory cache first
+    const cached = this.lidToPhone.get(lidUser)
+    if (cached) return cached
+    // Check Redis
+    const fromRedis = await redis.get(`lid:${lidUser}`).catch(() => null)
+    if (fromRedis) {
+      this.lidToPhone.set(lidUser, fromRedis)
+      return fromRedis
+    }
+    return undefined
+  }
+
   async sendText(instanceName: string, phone: string, text: string) {
     const session = this.sessions.get(instanceName)
     if (!session) throw new Error(`Instance "${instanceName}" is not connected`)
@@ -382,23 +537,43 @@ class BaileysManager {
     if (!session.socket.user) throw new Error(`Instance "${instanceName}" is still connecting — wait for QR scan to complete`)
     const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`
 
+    // If the URL points to a local upload, read the file as a buffer.
+    // Baileys can send buffers directly — avoids issues with Docker-internal URLs.
+    const mediaSource = this.resolveMediaSource(media.url)
+
     let msg: any
     switch (media.type) {
       case 'IMAGE':
-        msg = { image: { url: media.url }, caption: media.caption, mimetype: media.mimeType }
+        msg = { image: mediaSource, caption: media.caption, mimetype: media.mimeType }
         break
       case 'VIDEO':
-        msg = { video: { url: media.url }, caption: media.caption, mimetype: media.mimeType }
+        msg = { video: mediaSource, caption: media.caption, mimetype: media.mimeType }
         break
       case 'AUDIO':
-        msg = { audio: { url: media.url }, mimetype: media.mimeType ?? 'audio/ogg; codecs=opus', ptt: true }
+        msg = { audio: mediaSource, mimetype: media.mimeType ?? 'audio/ogg; codecs=opus', ptt: true }
         break
       case 'DOCUMENT':
-        msg = { document: { url: media.url }, mimetype: media.mimeType, fileName: media.fileName, caption: media.caption }
+        msg = { document: mediaSource, mimetype: media.mimeType, fileName: media.fileName, caption: media.caption }
         break
     }
 
     return session.socket.sendMessage(jid, msg)
+  }
+
+  /** If url points to a local /uploads/ file, return the Buffer; otherwise return { url } for Baileys to fetch. */
+  private resolveMediaSource(url: string): Buffer | { url: string } {
+    try {
+      const uploadsMatch = url.match(/\/uploads\/([^/?#]+)/)
+      if (uploadsMatch) {
+        const filePath = path.join(UPLOADS_DIR, uploadsMatch[1])
+        if (fs.existsSync(filePath)) {
+          return fs.readFileSync(filePath)
+        }
+      }
+    } catch (err) {
+      logger.warn({ url, err: (err as Error).message }, 'Failed to read local file, falling back to URL')
+    }
+    return { url }
   }
 
   async getProfilePicture(instanceName: string, jid: string): Promise<string | undefined> {
@@ -410,6 +585,36 @@ class BaileysManager {
       return await session.socket.profilePictureUrl(fullJid, 'image') ?? undefined
     } catch {
       return undefined
+    }
+  }
+
+  async getGroupMetadata(instanceName: string, groupJid: string) {
+    const session = this.sessions.get(instanceName)
+    if (!session) throw new Error(`Instance "${instanceName}" is not connected`)
+    const jid = groupJid.includes('@') ? groupJid : `${groupJid}@g.us`
+    const metadata = await session.socket.groupMetadata(jid)
+    let profilePic: string | undefined
+    try {
+      profilePic = await session.socket.profilePictureUrl(jid, 'image') ?? undefined
+    } catch { /* no pic */ }
+    return {
+      id: metadata.id,
+      subject: metadata.subject,
+      subjectOwner: metadata.subjectOwner,
+      subjectTime: metadata.subjectTime,
+      desc: metadata.desc,
+      descOwner: metadata.descOwner,
+      owner: metadata.owner,
+      creation: metadata.creation,
+      size: metadata.size ?? metadata.participants?.length ?? 0,
+      restrict: metadata.restrict,
+      announce: metadata.announce,
+      profilePic,
+      participants: metadata.participants?.map((p: any) => ({
+        id: p.id,
+        phone: p.id.replace(/@s\.whatsapp\.net$/, '').split(':')[0],
+        admin: p.admin ?? null,
+      })) ?? [],
     }
   }
 

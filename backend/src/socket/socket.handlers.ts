@@ -13,6 +13,12 @@ export function registerSocketHandlers(io: Server) {
       }
     })
 
+    // SUPER_ADMIN joins a global room to receive all scoped events
+    socket.on('scope:join-global', () => {
+      socket.join('scope:global')
+      logger.debug({ socketId: socket.id }, 'Joined global scope room (SUPER_ADMIN)')
+    })
+
     // Join a conversation room to receive real-time messages
     socket.on('conversation:join', (conversationId: string) => {
       socket.join(`conversation:${conversationId}`)

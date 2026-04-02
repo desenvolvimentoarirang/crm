@@ -111,6 +111,17 @@ export async function instancesRoutes(app: FastifyInstance) {
     }
   })
 
+  // ─── Group metadata (participants, admins, description, etc.) ────────────
+  app.get('/:name/groups/:groupJid', auth, async (req, reply) => {
+    const { name, groupJid } = req.params as { name: string; groupJid: string }
+    try {
+      const metadata = await baileysManager.getGroupMetadata(name, groupJid)
+      return metadata
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message })
+    }
+  })
+
   // ─── Delete ───────────────────────────────────────────────────────────────
   app.delete('/:name', adminOnly, async (req, reply) => {
     const { name } = req.params as { name: string }

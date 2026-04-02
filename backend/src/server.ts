@@ -38,7 +38,7 @@ export async function buildServer() {
 
   // ─── Security ──────────────────────────────────────────────────────────────
   await app.register(helmet, { contentSecurityPolicy: false })
-  const allowedOrigins = [env.FRONTEND_URL.replace(/\/+$/, ''), 'http://localhost:5173']
+  const allowedOrigins = [env.FRONTEND_URL.replace(/\/+$/, ''), 'http://localhost:5173', 'http://localhost:3000']
   console.log('✅ CORS allowed origins:', allowedOrigins)
   await app.register(cors, {
     origin: (origin, cb) => {

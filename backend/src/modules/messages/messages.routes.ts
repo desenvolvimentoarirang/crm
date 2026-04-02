@@ -9,7 +9,11 @@ import { env } from '../../config/env'
 import * as fs from 'fs'
 import * as path from 'path'
 import { pipeline } from 'stream/promises'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { randomUUID } from 'crypto'
+
+const execFileAsync = promisify(execFile)
 
 export async function messagesRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate] }
@@ -49,13 +53,43 @@ export async function messagesRoutes(app: FastifyInstance) {
 
     await pipeline(file.file, fs.createWriteStream(filePath))
 
-    const backendUrl = env.BACKEND_URL ?? `http://localhost:${env.PORT ?? 3000}`
-    const url = `${backendUrl}/uploads/${fileName}`
+    let finalPath = filePath
+    let finalName = fileName
+    let finalMime = file.mimetype
+
+    // Convert webm audio to ogg opus (required by WhatsApp for voice notes)
+    if (file.mimetype.startsWith('audio/') && ext.toLowerCase() === '.webm') {
+      const oggName = `${randomUUID()}.ogg`
+      const oggPath = path.join(uploadsDir, oggName)
+      try {
+        await execFileAsync('ffmpeg', [
+          '-i', filePath,
+          '-c:a', 'libopus',
+          '-b:a', '128k',
+          '-ar', '48000',
+          '-ac', '1',
+          '-application', 'voip',
+          '-vn',
+          '-y',
+          oggPath,
+        ])
+        // Remove the original webm
+        fs.unlinkSync(filePath)
+        finalPath = oggPath
+        finalName = oggName
+        finalMime = 'audio/ogg; codecs=opus'
+      } catch (err) {
+        // If ffmpeg fails, keep the webm file as fallback
+        console.error('ffmpeg conversion failed:', err)
+      }
+    }
+
+    const url = `/uploads/${finalName}`
 
     return reply.status(201).send({
       url,
       fileName: file.filename,
-      mimeType: file.mimetype,
+      mimeType: finalMime,
     })
   })
 
@@ -145,9 +179,9 @@ export async function messagesRoutes(app: FastifyInstance) {
     const convWithMessage = { ...updatedConv, messages: [message] }
     if (scope) {
       app.io.to(`scope:${scope}`).emit('conversation:updated', convWithMessage)
-    } else {
-      app.io.emit('conversation:updated', convWithMessage)
     }
+    // Always emit to global scope so SUPER_ADMIN gets updates
+    app.io.to('scope:global').emit('conversation:updated', convWithMessage)
 
     return reply.status(201).send(message)
   })
