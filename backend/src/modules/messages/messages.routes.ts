@@ -147,20 +147,27 @@ export async function messagesRoutes(app: FastifyInstance) {
       return reply.status(502).send({ message: err.message ?? 'Failed to send message via WhatsApp' })
     }
 
-    const message = await prisma.message.create({
-      data: {
-        conversationId: body.conversationId,
-        direction: 'OUTBOUND',
-        type: body.type as any,
-        body: body.text,
-        mediaUrl: body.mediaUrl,
-        mimeType: body.mimeType,
-        fileName: body.fileName,
-        evolutionId,
-        status: 'SENT',
-        timestamp: new Date(),
-      },
-    })
+    // Use upsert to handle the race condition where Baileys' messages.upsert event
+    // fires and creates the record (via handleIncomingMessage) before we do here.
+    const messageData = {
+      conversationId: body.conversationId,
+      direction: 'OUTBOUND' as const,
+      type: body.type as any,
+      body: body.text,
+      mediaUrl: body.mediaUrl,
+      mimeType: body.mimeType,
+      fileName: body.fileName,
+      evolutionId,
+      status: 'SENT' as const,
+      timestamp: new Date(),
+    }
+    const message = evolutionId
+      ? await prisma.message.upsert({
+          where: { evolutionId },
+          update: {},
+          create: messageData,
+        })
+      : await prisma.message.create({ data: messageData })
 
     const updatedConv = await prisma.conversation.update({
       where: { id: body.conversationId },
