@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { useAuthStore } from '../store/auth.store'
-import { backendUrl } from '../config/runtime'
+
+const backendUrl = import.meta.env.VITE_API_URL
 
 /**
  * Ao montar o app, tenta renovar o accessToken usando o refreshToken (cookie httpOnly).
@@ -12,8 +13,10 @@ export function useAuthInit() {
   const { login, logout, user } = useAuthStore()
 
   useEffect(() => {
+    const refreshUrl = backendUrl ? `${backendUrl}/api/auth/refresh` : '/api/auth/refresh'
+
     axios
-      .post(`${backendUrl}/api/auth/refresh`, {}, { withCredentials: true })
+      .post(refreshUrl, {}, { withCredentials: true })
       .then(({ data }) => {
         login(data.accessToken, data.user ?? user)
       })

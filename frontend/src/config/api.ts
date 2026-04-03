@@ -1,9 +1,10 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/auth.store'
-import { backendUrl } from './runtime'
+
+const backendUrl = import.meta.env.VITE_API_URL
 
 export const api = axios.create({
-  baseURL: `${backendUrl}/api`,
+  baseURL: backendUrl ? `${backendUrl}/api` : '/api',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
@@ -35,7 +36,7 @@ api.interceptors.response.use(
       original._retry = true
       isRefreshing = true
       try {
-        const refreshUrl = `${backendUrl}/api/auth/refresh`  // backendUrl is '' in dev → goes through proxy
+        const refreshUrl = backendUrl ? `${backendUrl}/api/auth/refresh` : '/api/auth/refresh'
         const { data } = await axios.post(refreshUrl, {}, { withCredentials: true })
         useAuthStore.getState().setToken(data.accessToken)
         failedQueue.forEach((p) => p.resolve(data.accessToken))
