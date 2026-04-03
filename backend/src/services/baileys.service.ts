@@ -191,20 +191,32 @@ class BaileysManager {
     // Cross-check fromMe using participant JID for groups (Baileys multi-device
     // doesn't always set fromMe correctly for messages sent from the phone)
     if (isGroup && !fromMe && msg.key.participant) {
+      let participantId = msg.key.participant.replace(/@.*$/, '').split(':')[0]
+      // If participant is a LID, resolve to real phone first
+      if (msg.key.participant.endsWith('@lid')) {
+        const resolved = await this.resolveLid(participantId)
+        if (resolved) participantId = resolved
+      }
+
       const session = this.sessions.get(instanceName)
       const myUser = session?.socket.user
       if (myUser?.id) {
         const myPhone = myUser.id.split(':')[0].split('@')[0]
-        let participantId = msg.key.participant.replace(/@.*$/, '').split(':')[0]
-        // If participant is a LID, try to resolve it to a real phone for comparison
-        if (msg.key.participant.endsWith('@lid')) {
-          const resolved = await this.resolveLid(participantId)
-          if (resolved) participantId = resolved
-        }
-        // Also compare against our own LID if participant is a LID and we couldn't resolve
         const myLid = (myUser as any).lid?.replace(/@.*$/, '').split(':')[0]
         if (myPhone === participantId || (myLid && myLid === msg.key.participant.replace(/@.*$/, '').split(':')[0])) {
           fromMe = true
+        }
+      }
+
+      // Fallback: compare participant against the instance's stored phone.
+      // Handles the case where socket.user.id is a LID (≠ real phone), so the
+      // comparison above fails even though the message was sent by us.
+      if (!fromMe) {
+        const instanceRecord = await prisma.whatsAppInstance.findFirst({ where: { name: instanceName } })
+        if (instanceRecord?.phone) {
+          const normInstance = instanceRecord.phone.replace(/[\s\-\+]/g, '').replace(/^0+/, '')
+          const normParticipant = participantId.replace(/[\s\-\+]/g, '').replace(/^0+/, '')
+          if (normInstance === normParticipant) fromMe = true
         }
       }
     }
@@ -509,11 +521,24 @@ class BaileysManager {
       if (lidContact) {
         const realContact = await prisma.contact.findUnique({ where: { phone: phoneUser } })
         if (realContact) {
-          // Real contact already exists — move conversations from LID contact to real contact, then delete LID contact
-          await prisma.conversation.updateMany({
-            where: { contactId: lidContact.id },
-            data: { contactId: realContact.id },
-          })
+          // Real contact already exists — conflict-aware merge:
+          // (contactId, instanceId) is unique, so we can't just updateMany — we
+          // must move messages from any conflicting LID conversation into the real
+          // conversation before deleting the LID one.
+          const lidConversations = await prisma.conversation.findMany({ where: { contactId: lidContact.id } })
+          for (const lidConv of lidConversations) {
+            const conflictConv = lidConv.instanceId
+              ? await prisma.conversation.findUnique({
+                  where: { contactId_instanceId: { contactId: realContact.id, instanceId: lidConv.instanceId } },
+                })
+              : null
+            if (conflictConv) {
+              await prisma.message.updateMany({ where: { conversationId: lidConv.id }, data: { conversationId: conflictConv.id } })
+              await prisma.conversation.delete({ where: { id: lidConv.id } })
+            } else {
+              await prisma.conversation.update({ where: { id: lidConv.id }, data: { contactId: realContact.id } })
+            }
+          }
           await prisma.contact.delete({ where: { id: lidContact.id } })
           logger.info({ lid: lidUser, phone: phoneUser }, 'Merged LID contact into existing phone contact')
         } else {
