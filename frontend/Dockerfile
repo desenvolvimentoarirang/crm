@@ -12,15 +12,22 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# ─── Production (Railway) & Local (docker-compose) ─────────────────────────
-FROM nginx:alpine AS runner
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+# ─── Production (Railway) ───────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN npm install -g serve
+
+COPY --from=builder /app/dist ./dist
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
 ENV PORT=80
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
 
-# Keep 'local' as alias for backwards compatibility
+ENTRYPOINT ["./docker-entrypoint.sh"]
+
+# ─── Local with nginx (docker-compose) ──────────────────────────────────────
 FROM nginx:alpine AS local
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
