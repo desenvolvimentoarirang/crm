@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# One-shot hard reset — set RESET_DB=true in Railway env vars, deploy once, then remove it
+if [ "$RESET_DB" = "true" ]; then
+  echo "RESET_DB=true detected — wiping database and running fresh migrations..."
+  npx prisma migrate reset --force
+  echo "Reset complete."
+  exec node dist/app.js
+fi
+
 echo "Running safe database migrations..."
 
 # Check if the DB already has tables (created by old db push) but no migration history.
